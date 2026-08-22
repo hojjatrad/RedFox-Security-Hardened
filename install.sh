@@ -7,7 +7,7 @@
 #  Telegram: https://t.me/redfox
 # ----------------------------------------------------------------------------
 #  This script installs, updates, removes, and manages a Red Fox bot stack
-#  (Apache 2 + PHP 8.2 + MySQL + phpMyAdmin) on Ubuntu/Debian, with optional
+#  (Apache 2 + PHP 8.4 + MySQL + phpMyAdmin) on Ubuntu/Debian, with optional
 #  side-by-side support for an existing Marzban panel (Docker MySQL).
 # ============================================================================
 # shellcheck shell=bash
@@ -844,7 +844,7 @@ grant_file_permissions() {
 install_bot() {
     show_logo
     ui_panel "INSTALLATION — STANDALONE" "$C_BOLD$C_GREEN" "$C_GREEN" \
-        "${C_WHITE}Installing Apache 2 + PHP 8.2 + MySQL + phpMyAdmin${C_RESET}" \
+        "${C_WHITE}Installing Apache 2 + PHP 8.4 + MySQL + phpMyAdmin${C_RESET}" \
         "${C_DIM}A fresh stack will be deployed under ${BOT_DIR}${C_RESET}"
 
     if check_marzban_installed; then
@@ -903,8 +903,8 @@ install_bot() {
         exit 1
     }
 
-    DEBIAN_FRONTEND=noninteractive apt install -y php8.2 php8.2-fpm php8.2-mysql || {
-        ui_err "Failed to install PHP 8.2 and related packages."
+    DEBIAN_FRONTEND=noninteractive apt install -y php8.4 php8.4-fpm php8.4-mysql || {
+        ui_err "Failed to install PHP 8.4 and related packages."
         exit 1
     }
 
@@ -1359,12 +1359,12 @@ install_bot_with_marzban() {
     fi
 
     DEBIAN_FRONTEND=noninteractive apt install -y \
-        php8.2 php8.2-fpm php8.2-mysql php8.2-mbstring php8.2-zip php8.2-gd \
-        php8.2-curl php8.2-soap php8.2-ssh2 libssh2-1-dev libssh2-1 php8.2-pdo || {
-        ui_err "Failed to install PHP 8.2 and modules."
+        php8.4 php8.4-fpm php8.4-mysql php8.4-mbstring php8.4-zip php8.4-gd \
+        php8.4-curl php8.4-soap php8.4-ssh2 libssh2-1-dev libssh2-1 php8.4-pdo || {
+        ui_err "Failed to install PHP 8.4 and modules."
         exit 1
     }
-    apt install -y libapache2-mod-php8.2     || { ui_err "Failed to install libapache2-mod-php8.2."; exit 1; }
+    apt install -y libapache2-mod-php8.4     || { ui_err "Failed to install libapache2-mod-php8.4."; exit 1; }
     apt install -y python3-certbot-apache    || { ui_err "Failed to install Certbot for Apache 2."; exit 1; }
     systemctl enable certbot.timer           || { ui_err "Failed to enable certbot timer."; exit 1; }
 
@@ -1840,7 +1840,7 @@ remove_bot() {
     find /etc/systemd /lib/systemd /usr/lib/systemd -name "*mysql*" -exec rm -f {} \; 2>/dev/null || true
 
     apt-get purge -y mysql-server mysql-server-8.0 mysql-client mysql-client-8.0 || true
-    apt-get purge -y mysql-client-core-8.0 mysql-server-core-8.0 mysql-common php-mysql php8.2-mysql php-mariadb-mysql-kbs 2>/dev/null || true
+    apt-get purge -y mysql-client-core-8.0 mysql-server-core-8.0 mysql-common php-mysql php8.4-mysql php-mariadb-mysql-kbs 2>/dev/null || true
     apt-get autoremove --purge -y || true
     apt-get clean       || true
     apt-get update      || true

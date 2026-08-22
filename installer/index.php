@@ -188,10 +188,10 @@ if ($installerMissingFiles) {
     $ERROR[] = "فایل‌های مفقود: <code>" . escapeHtml(implode(', ', $installerMissingFiles)) . "</code>";
     $ERROR[] = "ZIP کامل را دوباره در همان مسیر Extract کنید و مطمئن شوید File Manager همه فایل‌ها را منتقل کرده است.";
 }
-if(phpversion() < 8.2){
-    $ERROR[] = "نسخه PHP شما باید حداقل 8.2 باشد.";
-    $ERROR[] = "نسخه فعلی: ".phpversion();
-    $ERROR[] = "لطفا نسخه PHP خود را به 8.2 یا بالاتر ارتقا دهید.";
+if (version_compare(PHP_VERSION, '8.4.0', '<')) {
+    $ERROR[] = "نسخه PHP شما باید حداقل 8.4 باشد.";
+    $ERROR[] = "نسخه فعلی: " . PHP_VERSION;
+    $ERROR[] = "لطفاً نسخه PHP دامنه را به 8.4 یا بالاتر ارتقا دهید.";
 }
 
 $installerScriptPath = (string)(parse_url((string)($_SERVER['SCRIPT_NAME'] ?? '/installer/index.php'), PHP_URL_PATH) ?: '/installer/index.php');

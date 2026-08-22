@@ -57,7 +57,7 @@ deploy/staging/
 
 اجزا:
 
-- PHP 8.2 + Apache؛
+- PHP 8.4 + Apache؛
 - MySQL 8؛
 - Mock Telegram/Panel/Gateway؛
 - Environment کامل آزمایشی؛
@@ -102,7 +102,7 @@ Workflow جدید:
 
 مراحل:
 
-- PHP 8.2 و Extensions؛
+- PHP 8.4 و Extensions؛
 - Composer Validate/Install/Audit؛
 - PHP lint موازی؛
 - تست‌های ایستای فاز ۱ تا ۹؛

@@ -12,7 +12,7 @@ $add = static function (string $name, bool $ok, string $level, string $message =
     $checks[] = ['name' => $name, 'ok' => $ok, 'level' => $level, 'message' => $message];
 };
 
-$add('php_version', version_compare(PHP_VERSION, '8.2.0', '>='), 'critical', PHP_VERSION);
+$add('php_version', version_compare(PHP_VERSION, '8.4.0', '>='), 'critical', PHP_VERSION);
 foreach (['pdo_mysql', 'curl', 'json', 'mbstring', 'openssl'] as $extension) {
     $add('ext_' . $extension, extension_loaded($extension), 'critical');
 }

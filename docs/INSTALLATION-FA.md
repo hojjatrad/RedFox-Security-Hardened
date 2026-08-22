@@ -6,7 +6,7 @@
 
 ### نرم‌افزار
 
-- PHP `8.2` یا جدیدتر؛ نسخه‌های هدف این release: 8.2، 8.3 و 8.4؛
+- PHP `8.4` یا جدیدتر؛ این حداقل با dependencyهای قفل‌شده release همسان است؛
 - MySQL 8 یا MariaDB معاصر با InnoDB و `utf8mb4`؛
 - Apache/LiteSpeed یا Nginx؛
 - HTTPS معتبر و دامنه عمومی برای Webhook تلگرام؛
@@ -53,7 +53,7 @@ Get-FileHash .\RedFox-2.4.12-Security-Hardened-Hosting-Compatible-Final.zip -Alg
 
 1. ZIP را در مسیر نهایی مانند `public_html/bot` بارگذاری کنید.
 2. همان‌جا Extract کنید. نباید یک پوشه اضافه بین مسیر URL و فایل‌های برنامه ایجاد شود؛ `index.php`، `config.php`، `storage/` و `installer/` باید مستقیماً در ریشه برنامه باشند.
-3. PHP دامنه را روی 8.2+ تنظیم و extensionهای لازم را فعال کنید.
+3. PHP دامنه را روی 8.4+ تنظیم و extensionهای لازم را فعال کنید.
 4. owner فایل‌ها باید همان کاربر PHP باشد. از permission عمومی `777` استفاده نکنید.
 5. این مسیر را فقط با HTTPS باز کنید:
 

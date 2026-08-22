@@ -2,7 +2,7 @@
 
 ## پیش‌نیازها
 
-- PHP 8.2 یا 8.3
+- PHP 8.4 یا جدیدتر
 - MySQL یا MariaDB
 - گواهی SSL فعال
 - افزونه‌های PDO MySQL، mysqli، cURL، ZIP، Sodium، JSON، mbstring و GD

@@ -1,6 +1,6 @@
 # 🦊 RedFox 2.4.12 — سامانه فروش و مدیریت سرویس در تلگرام
 
-[![PHP 8.2+](https://img.shields.io/badge/PHP-8.2%2B-777BB4)](https://www.php.net/)
+[![PHP 8.4+](https://img.shields.io/badge/PHP-8.4%2B-777BB4)](https://www.php.net/)
 [![License: GPL v3+](https://img.shields.io/badge/License-GPLv3%2B-blue.svg)](LICENSE)
 [![Security Hardened](https://img.shields.io/badge/Security-Hardened-16a34a)](SECURITY.md)
 
@@ -14,7 +14,7 @@
 |---|---|
 | نسخه محصول | `2.4.12-redfox-dedicated-template-editor` |
 | نسخه انتشار | `v2.4.12-security-hardened` |
-| حداقل PHP | `8.2` |
+| حداقل PHP | `8.4` |
 | دیتابیس | MySQL / MariaDB با `utf8mb4` |
 | وب‌سرور | Apache/LiteSpeed یا Nginx |
 | HTTPS | اجباری برای Webhook واقعی تلگرام |

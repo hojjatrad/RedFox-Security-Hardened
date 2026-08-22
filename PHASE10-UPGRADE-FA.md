@@ -19,7 +19,7 @@ panel/hosting_setup.php
 
 Wizard موارد زیر را بررسی می‌کند:
 
-- PHP 8.2؛
+- PHP 8.4؛
 - PDO MySQL، cURL، ZIP و Sodium؛
 - محافظت Storage؛
 - Permission فایل Secret؛

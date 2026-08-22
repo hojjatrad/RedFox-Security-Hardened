@@ -100,7 +100,7 @@
 ## چک‌لیست اجباری staging/cPanel
 
 1. از کل production و DB بکاپ خارج از webroot تهیه و امکان restore را عملاً آزمایش کنید.
-2. PHP 8.2+ و extensionهای لازم شامل `curl`, `pdo_mysql`, `mysqli`, `json`, `mbstring`, `openssl`, `sodium`, `zip`, `gd`, `fileinfo`, `dom/xml` را فعال کنید.
+2. PHP 8.4+ و extensionهای لازم شامل `curl`, `pdo_mysql`, `mysqli`, `json`, `mbstring`, `openssl`, `sodium`, `zip`, `gd`, `fileinfo`, `dom/xml` را فعال کنید.
 3. روی یک DB staging خالی و یک clone ارتقایی، همه migrationها را با کاربر محدود اجرا و schema/index/constraintها را کنترل کنید.
 4. `php -l` را روی همه فایل‌های PHP و Composer audit را در همان سرور اجرا کنید.
 5. webhook Telegram با secret، replay update، update هم‌زمان و خطای DB را تست کنید.
