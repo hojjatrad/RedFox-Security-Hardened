@@ -1,0 +1,41 @@
+name: Red Fox CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  static-and-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql,mysqli,curl,zip,gd,intl,mbstring,sodium
+          tools: composer:v2
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: composer validate --strict
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: composer audit
+      - run: find . -path ./vendor -prune -o -name '*.php' -print0 | xargs -0 -n1 -P4 php -l
+      - run: pip install tree-sitter tree-sitter-php
+      - run: |
+          python tests/security_static_test.py
+          python tests/reseller_scope_static_test.py
+          python tests/phase3_static_test.py
+          python tests/phase4_static_test.py
+          python tests/phase5_static_test.py
+          python tests/phase6_static_test.py
+          python tests/phase7_static_test.py
+          python tests/phase8_static_test.py
+          python tests/phase9_static_test.py
+          python tests/phase10_static_test.py
+          python tests/phase11_static_test.py
+          python tests/phase12_bugfix_test.py
+          python tests/phase13_updater_test.py
+          python tests/phase14_ui_progress_test.py
+      - run: php tests/runtime_core.php
+      - run: bash -n install.sh deploy/*.sh deploy/staging/*.sh
+      - run: docker compose -f deploy/staging/docker-compose.yml config >/dev/null

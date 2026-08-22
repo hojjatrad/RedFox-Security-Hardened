@@ -1,0 +1,11 @@
+-- Persian UX, reseller credit alerts, web notifications and default client applications.
+SET @db:=DATABASE();
+SET @q:=IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=@db AND TABLE_NAME='setting' AND COLUMN_NAME='reseller_low_balance_threshold')=0,'ALTER TABLE setting ADD COLUMN reseller_low_balance_threshold BIGINT NOT NULL DEFAULT 100000','SELECT 1');PREPARE s FROM @q;EXECUTE s;DEALLOCATE PREPARE s;
+CREATE TABLE IF NOT EXISTS reseller_balance_alerts(reseller_id VARCHAR(64) PRIMARY KEY,last_balance BIGINT NOT NULL DEFAULT 0,last_notified_at BIGINT UNSIGNED NOT NULL DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS admin_notifications(id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,type VARCHAR(40) NOT NULL,title VARCHAR(191) NOT NULL,body VARCHAR(1000) NULL,entity_id VARCHAR(191) NULL,url VARCHAR(500) NULL,is_read TINYINT(1) NOT NULL DEFAULT 0,created_at BIGINT UNSIGNED NOT NULL,UNIQUE KEY uq_admin_notice(type,entity_id),KEY idx_admin_notice_read(is_read,created_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+INSERT INTO app(name,link) SELECT 'v2rayNG — اندروید','https://github.com/2dust/v2rayNG/releases/latest' WHERE NOT EXISTS(SELECT 1 FROM app WHERE name='v2rayNG — اندروید');
+INSERT INTO app(name,link) SELECT 'Hiddify Next — اندروید، ویندوز، لینوکس و macOS','https://github.com/hiddify/hiddify-app/releases/latest' WHERE NOT EXISTS(SELECT 1 FROM app WHERE name='Hiddify Next — اندروید، ویندوز، لینوکس و macOS');
+INSERT INTO app(name,link) SELECT 'NekoBox — اندروید','https://github.com/MatsuriDayo/NekoBoxForAndroid/releases/latest' WHERE NOT EXISTS(SELECT 1 FROM app WHERE name='NekoBox — اندروید');
+INSERT INTO app(name,link) SELECT 'V2Box — آیفون و آیپد','https://apps.apple.com/app/v2box-v2ray-client/id6446814690' WHERE NOT EXISTS(SELECT 1 FROM app WHERE name='V2Box — آیفون و آیپد');
+INSERT INTO app(name,link) SELECT 'Streisand — آیفون و آیپد','https://apps.apple.com/app/streisand/id6450534064' WHERE NOT EXISTS(SELECT 1 FROM app WHERE name='Streisand — آیفون و آیپد');
+INSERT INTO app(name,link) SELECT 'Nekoray — ویندوز و لینوکس','https://github.com/MatsuriDayo/nekoray/releases/latest' WHERE NOT EXISTS(SELECT 1 FROM app WHERE name='Nekoray — ویندوز و لینوکس');

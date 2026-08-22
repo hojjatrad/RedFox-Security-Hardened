@@ -1,0 +1,4 @@
+-- Update progress tracking and local upload source notification
+SET @db:=DATABASE();
+SET @q:=IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=@db AND TABLE_NAME='update_jobs' AND COLUMN_NAME='progress_percent')=0,'ALTER TABLE update_jobs ADD COLUMN progress_percent TINYINT UNSIGNED NOT NULL DEFAULT 0,ADD COLUMN progress_stage VARCHAR(100) NULL,ADD COLUMN processed_files INT UNSIGNED NOT NULL DEFAULT 0,ADD COLUMN total_action_files INT UNSIGNED NOT NULL DEFAULT 0','SELECT 1');PREPARE s FROM @q;EXECUTE s;DEALLOCATE PREPARE s;
+SET @q:=IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=@db AND TABLE_NAME='update_sources' AND COLUMN_NAME='last_source')=0,'ALTER TABLE update_sources ADD COLUMN last_source VARCHAR(30) NULL,ADD COLUMN last_file VARCHAR(500) NULL','SELECT 1');PREPARE s FROM @q;EXECUTE s;DEALLOCATE PREPARE s;

@@ -1,0 +1,2 @@
+<?php
+declare(strict_types=1);if(PHP_SAPI!=='cli'){http_response_code(404);exit;}require_once dirname(__DIR__).'/config.php';require_once dirname(__DIR__).'/lib/MigrationRunner.php';if(!isset($pdo)||!($pdo instanceof PDO)){fwrite(STDERR,"Database unavailable\n");exit(2);}$dry=in_array('--dry-run',$argv,true);try{$rows=RedFoxMigrationRunner::run($pdo,dirname(__DIR__).'/migrations',$dry);foreach($rows as[$v,$s])echo strtoupper($s)." $v\n";}catch(Throwable$e){fwrite(STDERR,'Migration failed: '.redfox_exception_fingerprint($e)."\n");exit(1);}

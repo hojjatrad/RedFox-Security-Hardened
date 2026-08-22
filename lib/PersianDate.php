@@ -1,0 +1,2 @@
+<?php
+declare(strict_types=1);if(!function_exists('jdate')){@require_once dirname(__DIR__).'/jdf.php';}function rx_fa_date($value,string$format='Y/m/d H:i'):string{$ts=is_numeric($value)?(int)$value:strtotime((string)$value);if(!$ts)return'—';return function_exists('jdate')?(string)jdate($format,$ts):date($format,$ts);}function rx_fa_digits($s):string{return strtr((string)$s,['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']);}

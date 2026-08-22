@@ -1,0 +1,3 @@
+-- v2rayN for Windows and Persian tutorial.
+INSERT INTO app(name,link,platform,enabled) SELECT 'v2rayN — ویندوز','https://github.com/2dust/v2rayN/releases/latest','ویندوز',1 WHERE NOT EXISTS(SELECT 1 FROM app WHERE name='v2rayN — ویندوز');
+INSERT INTO help(name_os,Media_os,type_Media_os,category,Description_os) SELECT 'اتصال با v2rayN در ویندوز','','text','ویندوز','v2rayN را از بخش نرم‌افزارها دانلود و Extract کنید. برنامه را اجرا کنید، لینک اشتراک را کپی و از منوی Subscription گزینه Add subscription from clipboard را انتخاب کنید. سپس Update subscription و در پایان Set system proxy را فعال کنید.' WHERE NOT EXISTS(SELECT 1 FROM help WHERE name_os='اتصال با v2rayN در ویندوز');

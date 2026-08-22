@@ -1,0 +1,6 @@
+-- Recoverable main-bot webhook setup state for installer and panel repair.
+SET @db:=DATABASE();
+SET @q:=IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=@db AND TABLE_NAME='setting' AND COLUMN_NAME='webhook_setup_status')=0,"ALTER TABLE setting ADD COLUMN webhook_setup_status VARCHAR(16) NOT NULL DEFAULT 'pending' AFTER webhook_secret_token",'SELECT 1');PREPARE s FROM @q;EXECUTE s;DEALLOCATE PREPARE s;
+SET @q:=IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=@db AND TABLE_NAME='setting' AND COLUMN_NAME='webhook_last_error_code')=0,"ALTER TABLE setting ADD COLUMN webhook_last_error_code VARCHAR(64) NOT NULL DEFAULT '' AFTER webhook_setup_status",'SELECT 1');PREPARE s FROM @q;EXECUTE s;DEALLOCATE PREPARE s;
+SET @q:=IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=@db AND TABLE_NAME='setting' AND COLUMN_NAME='webhook_last_attempt_at')=0,"ALTER TABLE setting ADD COLUMN webhook_last_attempt_at BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER webhook_last_error_code",'SELECT 1');PREPARE s FROM @q;EXECUTE s;DEALLOCATE PREPARE s;
+UPDATE setting SET webhook_setup_status='pending' WHERE webhook_setup_status IS NULL OR webhook_setup_status NOT IN ('active','pending','disabled','unknown');

@@ -1,0 +1,13 @@
+.git
+.github
+updates/*
+logs/*
+!logs/.htaccess
+storage/*
+!storage/.gitignore
+!storage/.htaccess
+!storage/cache/
+!storage/cache/.gitignore
+*.zip
+*.log
+error_log

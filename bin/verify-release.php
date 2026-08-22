@@ -1,0 +1,2 @@
+<?php
+declare(strict_types=1);if(PHP_SAPI!=='cli')exit(404);require_once dirname(__DIR__).'/config.php';require_once dirname(__DIR__).'/lib/SecureUpdater.php';try{$r=RedFoxSecureUpdater::verifyRelease(dirname(__DIR__));if(!empty($r['unsigned'])){echo"UNSIGNED INITIAL/MANUAL RELEASE\n";exit(3);}if(empty($r['ok'])){foreach($r['errors']as$e)echo"FAIL $e\n";exit(2);}echo"OK version=$r[version] channel=$r[channel] key=$r[key_id]\n";}catch(Throwable$e){fwrite(STDERR,redfox_exception_fingerprint($e)."\n");exit(1);}

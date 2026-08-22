@@ -1,0 +1,5 @@
+<?php
+declare(strict_types=1);
+function rx_schema_migration_mode():bool{return defined('REDFOX_SCHEMA_MIGRATION_MODE')&&REDFOX_SCHEMA_MIGRATION_MODE===true;}
+function rx_require_schema(PDO$pdo,array$tables=[],array$columns=[]):void{foreach($tables as$t){if(!preg_match('/^[A-Za-z0-9_]+$/',$t))throw new RuntimeException('Invalid schema identifier');$q=$pdo->prepare('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?');$q->execute([$t]);if((int)$q->fetchColumn()!==1)throw new RuntimeException("Database migration required: missing table $t");}foreach($columns as$t=>$list)foreach($list as$c){$q=$pdo->prepare('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?');$q->execute([$t,$c]);if((int)$q->fetchColumn()!==1)throw new RuntimeException("Database migration required: missing $t.$c");}}
+function rx_runtime_ddl_forbidden(string$operation='DDL'):never{throw new RuntimeException($operation.' is forbidden during web/cron runtime; run bin/migrate.php');}

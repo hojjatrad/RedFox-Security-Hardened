@@ -1,0 +1,7 @@
+# Red Fox — replace paths and PHP binary as needed
+* * * * * www-data /usr/bin/php /var/www/redfox/current/cron/cron.php >/dev/null 2>&1
+* * * * * www-data /usr/bin/php /var/www/redfox/current/cron/reseller_messages.php >/dev/null 2>&1
+15 * * * * www-data /usr/bin/php /var/www/redfox/current/cron/update_check.php >/dev/null 2>&1
+0 * * * * www-data /usr/bin/php /var/www/redfox/current/cron_campaigns.php >/dev/null 2>&1
+15 * * * * www-data /usr/bin/php /var/www/redfox/current/cron_renewal.php >/dev/null 2>&1
+0 3 * * * www-data /usr/bin/php /var/www/redfox/current/bin/maintenance.php >/dev/null 2>&1

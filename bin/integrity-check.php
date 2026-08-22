@@ -1,0 +1,12 @@
+<?php
+declare(strict_types=1);if(PHP_SAPI!=='cli')exit(404);require_once dirname(__DIR__).'/config.php';$out=[];$check=function(string$n,string$sql,array$p=[],string$level='warning')use(&$out,$pdo){try{$q=$pdo->prepare($sql);$q->execute($p);$rows=$q->fetchAll(PDO::FETCH_ASSOC);$out[]=['name'=>$n,'level'=>$level,'count'=>count($rows),'sample'=>array_slice($rows,0,20)];}catch(Throwable$e){$out[]=['name'=>$n,'level'=>'critical','count'=>1,'sample'=>[['error'=>redfox_exception_fingerprint($e)]]];}};
+$check('duplicate_payment_order_ids',"SELECT id_order,COUNT(*) c FROM Payment_report WHERE id_order IS NOT NULL AND id_order<>'' GROUP BY id_order HAVING c>1",[],'critical');
+$check('duplicate_service_usernames',"SELECT username,COUNT(*) c FROM invoice WHERE username IS NOT NULL AND username<>'' GROUP BY username HAVING c>1",[],'warning');
+$check('orphan_invoices_users',"SELECT i.id_invoice,i.id_user FROM invoice i LEFT JOIN user u ON u.id=i.id_user WHERE u.id IS NULL LIMIT 100",[],'critical');
+$check('orphan_invoice_panels',"SELECT i.id_invoice,i.Service_location FROM invoice i LEFT JOIN marzban_panel p ON p.name_panel=i.Service_location WHERE i.Service_location IS NOT NULL AND i.Service_location<>'' AND p.id IS NULL LIMIT 100",[],'warning');
+$check('negative_reseller_balances',"SELECT id,Balance,agent FROM user WHERE agent IN ('n','n2') AND CAST(Balance AS SIGNED)<0 LIMIT 100",[],'critical');
+$check('payment_needs_reconcile',"SELECT order_id,status,updated_at FROM payment_effects WHERE status='needs_reconcile' LIMIT 100",[],'critical');
+$check('service_needs_reconcile',"SELECT operation_id,invoice_id,status FROM reseller_service_operations WHERE status='needs_reconcile' LIMIT 100",[],'critical');
+$check('message_needs_reconcile',"SELECT id,broadcast_id,recipient_user_id FROM reseller_message_queue WHERE status='needs_reconcile' LIMIT 100",[],'warning');
+$check('paid_without_effect_record',"SELECT p.id_order,p.Payment_Method,p.id_user FROM Payment_report p LEFT JOIN payment_effects e ON e.order_id=p.id_order WHERE p.payment_Status='paid' AND e.order_id IS NULL AND p.time>=? LIMIT 100",[date('Y/m/d H:i:s',time()-7*86400)],'warning');
+$json=in_array('--json',$argv,true);if($json)echo json_encode($out,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE)."\n";else foreach($out as$c)echo sprintf("%-9s %-34s %d\n",$c['count']?strtoupper($c['level']):'OK',$c['name'],$c['count']);$critical=false;foreach($out as$c)if($c['count']&&$c['level']==='critical')$critical=true;exit($critical?2:0);

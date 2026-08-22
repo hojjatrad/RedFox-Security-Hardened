@@ -1,0 +1,2 @@
+<?php
+require_once __DIR__.'/../lib/CronGuard.php';rx_cron_authorize();require_once __DIR__.'/../config.php';header('Content-Type:text/plain; charset=utf-8');$q=$pdo->prepare("SELECT COUNT(*) FROM schema_migrations WHERE version='010_final_features_no_runtime_ddl.sql'");$q->execute();if((int)$q->fetchColumn()!==1){http_response_code(503);echo"Migration 010 required; runtime index creation is disabled.\n";exit;}echo"Indexes are managed exclusively by bin/migrate.php.\n";

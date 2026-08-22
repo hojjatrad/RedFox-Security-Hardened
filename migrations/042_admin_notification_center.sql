@@ -1,0 +1,2 @@
+-- Persistent global admin notification center.
+CREATE TABLE IF NOT EXISTS admin_notifications(id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,type VARCHAR(40) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,title VARCHAR(191) NOT NULL,body VARCHAR(1000) NULL,entity_id VARCHAR(191) NOT NULL,url VARCHAR(500) NULL,is_read TINYINT(1) NOT NULL DEFAULT 0,created_at BIGINT UNSIGNED NOT NULL,UNIQUE KEY uq_admin_notice(type,entity_id),KEY idx_admin_notice_read(is_read,created_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

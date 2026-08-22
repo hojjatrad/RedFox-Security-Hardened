@@ -1,0 +1,2 @@
+-- Telegram callback_data is limited to 64 bytes; map long reseller product callbacks to short tokens.
+CREATE TABLE IF NOT EXISTS bot_callback_map(token CHAR(24) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,bot_token CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,callback_data VARCHAR(500) NOT NULL,expires_at BIGINT UNSIGNED NOT NULL,KEY idx_bcm_exp(expires_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

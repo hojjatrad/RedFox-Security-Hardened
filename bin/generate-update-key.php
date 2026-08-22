@@ -1,0 +1,2 @@
+<?php
+declare(strict_types=1);if(PHP_SAPI!=='cli')exit(404);if(!function_exists('sodium_crypto_sign_keypair')){$a=dirname(__DIR__).'/vendor/autoload.php';if(is_file($a))require_once$a;}if(!function_exists('sodium_crypto_sign_keypair')){fwrite(STDERR,"Sodium unavailable\n");exit(1);}$kp=sodium_crypto_sign_keypair();echo"REDFOX_UPDATE_PUBLIC_KEY=".base64_encode(sodium_crypto_sign_publickey($kp))."\n";echo"REDFOX_UPDATE_PRIVATE_KEY=".base64_encode(sodium_crypto_sign_secretkey($kp))."\n";echo"Store the private key offline; deploy only the public key.\n";

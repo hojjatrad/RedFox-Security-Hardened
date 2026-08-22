@@ -1,0 +1,3 @@
+-- Remove duplicate visible categories created by legacy import and enforce uniqueness.
+DELETE c1 FROM content_categories c1 JOIN content_categories c2 ON c1.section=c2.section AND LOWER(TRIM(c1.name)) COLLATE utf8mb4_unicode_ci=LOWER(TRIM(c2.name)) COLLATE utf8mb4_unicode_ci AND c1.id>c2.id;
+SET @db:=DATABASE();SET @q:=IF((SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=@db AND TABLE_NAME='content_categories' AND INDEX_NAME='uq_cc_section_name')=0,'ALTER TABLE content_categories ADD UNIQUE KEY uq_cc_section_name(section,name(120))','SELECT 1');PREPARE s FROM @q;EXECUTE s;DEALLOCATE PREPARE s;

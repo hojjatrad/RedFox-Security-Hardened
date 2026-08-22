@@ -1,0 +1,32 @@
+Options -Indexes
+ServerSignature Off
+
+<FilesMatch "(^\.|\.(?:log|sql|bak|old|orig|swp|dist|md|rxb|key|pem|env|ini|ya?ml)$)">
+    Require all denied
+</FilesMatch>
+
+<Files "composer.json">
+    Require all denied
+</Files>
+<Files "composer.lock">
+    Require all denied
+</Files>
+<Files "config.php">
+    Require all denied
+</Files>
+<Files "table.php">
+    Require all denied
+</Files>
+<Files "error_log">
+    Require all denied
+</Files>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(?:bin|lib|vendor|migrations|re/rx|updates|Upload|storage|logs)/ - [F,L,NC]
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "same-origin"
+</IfModule>

@@ -1,0 +1,2 @@
+<?php
+declare(strict_types=1);if(PHP_SAPI!=='cli')exit(404);$mode=$argv[1]??'';$file=dirname(__DIR__).'/storage/maintenance.flag';if($mode==='on'){$msg=$argv[2]??'بروزرسانی امن در حال انجام است.';file_put_contents($file,$msg,LOCK_EX);chmod($file,0640);echo"MAINTENANCE ON\n";}elseif($mode==='off'){@unlink($file);echo"MAINTENANCE OFF\n";}elseif($mode==='status'){echo is_file($file)?"ON\n":"OFF\n";}else{fwrite(STDERR,"Usage: php bin/maintenance-mode.php on|off|status [message]\n");exit(2);}

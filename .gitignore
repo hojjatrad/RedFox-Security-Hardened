@@ -1,0 +1,64 @@
+# Runtime secrets and environment
+.env
+.env.*
+!.env.example
+/storage/secure.env.php
+/storage/secure.env.php.*
+/storage/.secure-env*
+.redfox-install-token*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Runtime locks, sessions, logs and temporary data
+/storage/*.lock
+/storage/*.pid
+/storage/*.tmp
+/storage/locks/
+/storage/sessions/
+/storage/cache/
+/storage/tmp/
+/logs/*.log
+/logs/*.jsonl
+/logs/*.ndjson
+*.log
+*.pid
+*.tmp
+*.swp
+
+# User data, backups and updater staging
+/backups/
+/backup/
+/storage/**/*.sql
+/storage/**/*.sql.gz
+*.bak
+/updates/*.zip
+/updates/staging/
+/updates/tmp/
+/Upload/*
+!/Upload/.gitignore
+!/Upload/.htaccess
+/uploads/*
+!/uploads/.gitignore
+!/uploads/.htaccess
+
+# Build and test artifacts
+*.zip
+*.sha256
+.phpunit.result.cache
+.pytest_cache/
+__pycache__/
+*.py[cod]
+coverage/
+build/
+dist/
+
+# Composer and IDE local files
+/vendor-bin/
+composer.phar
+.phpunit.cache/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

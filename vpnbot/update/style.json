@@ -1,0 +1,17 @@
+{
+    "enabled": true,
+    "buy": "success",
+    "test": "warning",
+    "my_service": "primary",
+    "wallet": "primary",
+    "support": "secondary",
+    "admin": "danger",
+    "back": "default",
+    "payment_confirm": "success",
+    "payment_add_balance": "primary",
+    "payment_back": "default",
+    "product_item": "default",
+    "category_item": "default",
+    "panel_location": "primary",
+    "custom_volume": "warning"
+}

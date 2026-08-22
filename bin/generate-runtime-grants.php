@@ -1,0 +1,2 @@
+<?php
+declare(strict_types=1);if(PHP_SAPI!=='cli')exit(404);$user=$argv[1]??'';$host=$argv[2]??'localhost';$db=$argv[3]??'';foreach([$user,$host,$db]as$v)if(!preg_match('/^[A-Za-z0-9_.%:-]+$/',$v)){fwrite(STDERR,"Usage: php bin/generate-runtime-grants.php DB_USER DB_HOST DB_NAME\n");exit(2);}echo"-- Review as MySQL administrator; do not run with application credentials.\n";echo"REVOKE ALL PRIVILEGES, GRANT OPTION FROM `{$user}`@`{$host}`;\n";echo"GRANT SELECT, INSERT, UPDATE, DELETE ON `{$db}`.* TO `{$user}`@`{$host}`;\n";echo"FLUSH PRIVILEGES;\n";

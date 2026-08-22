@@ -1,0 +1,2 @@
+<?php
+declare(strict_types=1);if(PHP_SAPI!=='cli')exit(404);require_once dirname(__DIR__).'/config.php';require_once dirname(__DIR__).'/lib/DatabaseBackup.php';$key=rx_key_from_env('REDFOX_BACKUP_KEY');if($key===null){fwrite(STDERR,"Set a 32-byte REDFOX_BACKUP_KEY\n");exit(2);}try{echo RedFoxDatabaseBackup::create($pdo,$argv[1]??dirname(__DIR__).'/storage/backups',$key).PHP_EOL;}catch(Throwable$e){fwrite(STDERR,redfox_exception_fingerprint($e)."\n");exit(1);}

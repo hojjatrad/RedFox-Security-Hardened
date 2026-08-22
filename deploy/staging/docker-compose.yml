@@ -1,0 +1,46 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: redfox
+      MYSQL_USER: redfox
+      MYSQL_PASSWORD: redfox_test
+      MYSQL_ROOT_PASSWORD: root_test_only
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes: ["redfox_mysql:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -proot_test_only --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  mock:
+    image: python:3.12-alpine
+    working_dir: /mock
+    volumes: ["./mock-server.py:/mock/server.py:ro"]
+    command: ["python", "/mock/server.py"]
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/staging/Dockerfile
+    depends_on:
+      mysql: {condition: service_healthy}
+    ports: ["8080:80"]
+    environment:
+      REDFOX_DB_HOST: mysql
+      REDFOX_DB_NAME: redfox
+      REDFOX_DB_USER: redfox
+      REDFOX_DB_PASSWORD: redfox_test
+      REDFOX_BOT_TOKEN: "staging-invalid-token-for-mock-only"
+      REDFOX_BOT_USERNAME: redfox_staging_bot
+      REDFOX_ADMIN_ID: "100000001"
+      REDFOX_DOMAIN: localhost:8080
+      REDFOX_TELEGRAM_API_BASE: http://mock:8090
+      REDFOX_MASTER_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      REDFOX_BACKUP_KEY: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      REDFOX_CRON_SECRET: staging-cron-secret-not-for-production
+      REDFOX_DIAG_SECRET: staging-diag-secret-not-for-production
+      REDFOX_HEALTH_TOKEN: staging-health-secret-not-for-production
+      REDFOX_UPDATE_PUBLIC_KEYS: '{"staging":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}'
+      REDFOX_UPDATE_CHANNEL: stable
+volumes:
+  redfox_mysql:

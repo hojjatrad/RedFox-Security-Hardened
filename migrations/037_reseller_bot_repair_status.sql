@@ -1,0 +1,2 @@
+-- Persistent reseller bot synchronization/webhook health.
+SET @db:=DATABASE();SET @q:=IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=@db AND TABLE_NAME='botsaz' AND COLUMN_NAME='sync_status')=0,'ALTER TABLE botsaz ADD COLUMN sync_status VARCHAR(20) NOT NULL DEFAULT ''unknown'',ADD COLUMN sync_error VARCHAR(1000) NULL,ADD COLUMN last_synced_at BIGINT UNSIGNED NULL','SELECT 1');PREPARE s FROM @q;EXECUTE s;DEALLOCATE PREPARE s;
