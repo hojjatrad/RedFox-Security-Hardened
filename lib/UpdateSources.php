@@ -9,7 +9,7 @@ final class RedFoxUpdateSources
         return $row ?: [];
     }
 
-    public static function save(PDO $pdo, string $repo, string $pattern, bool $unsigned, bool $auto): void
+    public static function save(PDO $pdo, string $repo, string $pattern, bool $unsigned, bool $auto, string $token = ''): void
     {
         $repo = trim(preg_replace('#^https?://github\.com/#', '', $repo), '/');
         if ($repo !== '' && !preg_match('#^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$#', $repo)) {
@@ -17,8 +17,8 @@ final class RedFoxUpdateSources
         }
         if ($pattern === '' || strlen($pattern) > 191) throw new RuntimeException('Asset pattern invalid');
         if ($unsigned) throw new RuntimeException('Unsigned update packages are forbidden');
-        $pdo->prepare('UPDATE update_sources SET github_repo=?,asset_pattern=?,allow_unsigned_local=0,auto_check=?,updated_at=? WHERE id=1')
-            ->execute([$repo, $pattern, $auto ? 1 : 0, time()]);
+        $pdo->prepare('UPDATE update_sources SET github_repo=?,github_token=?,asset_pattern=?,allow_unsigned_local=0,auto_check=?,updated_at=? WHERE id=1')
+            ->execute([$repo, $token !== '' ? $token : null, $pattern, $auto ? 1 : 0, time()]);
     }
 
     public static function checkGitHub(PDO $pdo): array
@@ -30,12 +30,18 @@ final class RedFoxUpdateSources
         $url = 'https://api.github.com/repos/' . $repo . '/releases?per_page=10';
         $raw = '';
         $tooLarge = false;
+        $token = (string)($settings['github_token'] ?? '');
+        $headers = ['Accept: application/vnd.github+json'];
+        if ($token !== '') {
+            $headers[] = 'Authorization: Bearer ' . $token;
+        }
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => false,
             CURLOPT_TIMEOUT => 20,
             CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_USERAGENT => 'RedFox-Updater/3.0',
+            CURLOPT_HTTPHEADER => $headers,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_FOLLOWLOCATION => false,
@@ -134,7 +140,7 @@ final class RedFoxUpdateSources
         return $best;
     }
 
-    public static function download(string $url, string $dest): void
+    public static function download(string $url, string $dest, string $token = ''): void
     {
         $allowed = [
             'github.com',
@@ -172,11 +178,14 @@ final class RedFoxUpdateSources
                 $status = 0;
                 $location = '';
                 $ch = curl_init($currentUrl);
+                $dlHeaders = ['Accept: application/octet-stream'];
+                if ($token !== '') $dlHeaders[] = 'Authorization: Bearer ' . $token;
                 curl_setopt_array($ch, [
                     CURLOPT_RETURNTRANSFER => false,
                     CURLOPT_TIMEOUT => 180,
                     CURLOPT_CONNECTTIMEOUT => 15,
                     CURLOPT_USERAGENT => 'RedFox-Updater/3.0',
+                    CURLOPT_HTTPHEADER => $dlHeaders,
                     CURLOPT_SSL_VERIFYPEER => true,
                     CURLOPT_SSL_VERIFYHOST => 2,
                     CURLOPT_FOLLOWLOCATION => false,

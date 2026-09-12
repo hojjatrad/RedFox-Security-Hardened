@@ -57,6 +57,7 @@ final class RedFoxUpdaterSchema
         self::addMissingColumns($pdo, 'update_sources', [
             'last_source' => "VARCHAR(30) NULL",
             'last_file' => "VARCHAR(500) NULL",
+            'github_token' => "VARCHAR(500) NULL",
         ]);
         self::addMissingColumns($pdo, 'update_jobs', [
             'progress_percent' => "TINYINT UNSIGNED NOT NULL DEFAULT 0",
