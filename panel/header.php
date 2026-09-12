@@ -9,7 +9,7 @@ redfox_secure_session_start();
 // Panel version (read from the project root `version` file). Displayed in the
 // sidebar footer on every page. Always shown with a leading "v".
 $__panelVersionRaw = trim((string)@file_get_contents(__DIR__ . '/../version'));
-if ($__panelVersionRaw === '') $__panelVersionRaw = '0.0.2';
+if ($__panelVersionRaw === '') $__panelVersionRaw = '2.4.12';
 $__panelVersion = (stripos($__panelVersionRaw, 'v') === 0) ? $__panelVersionRaw : ('v' . $__panelVersionRaw);
 // Header rendering is read-only. Notification synchronization, marking,
 // reseller-bot repair, and update discovery must not run as GET side effects.

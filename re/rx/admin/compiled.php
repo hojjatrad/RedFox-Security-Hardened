@@ -14,7 +14,7 @@ if (isset($datain) && $datain != "" && $text == "" && in_array($from_id, $admin_
 // Red Fox: اگر ادمین متن خوش‌آمدگویی را در پنل ویرایش کرده، از آن استفاده کن
 $__rxWOverride = '';
 try { $__rxWs = $pdo->query("SELECT admin_welcome_text FROM setting LIMIT 1"); $__rxWOverride = trim((string)$__rxWs->fetchColumn()); } catch(\Throwable $e){}
-$text_panel_admin_login_template = ($__rxWOverride !== '') ? $__rxWOverride : "💎 | Version Bot: 0.0.2\n📌 | Version Mini App: 0.0.2\n<blockquote>🔹 | این ربات کاملاً رایگان است توسط Mmd | Amir ریفکتور شده است</blockquote>\n\n<blockquote>🔹 | هرگونه فروش یا دریافت وجه بابت این ربات تخلف محسوب می‌شود.</blockquote>\n\n<blockquote>🔹 | در صورت مشاهده فروش یا دریافت وجه، لطفاً وجه خود را پیگیری کرده و بازپس‌گیری نمایید.</blockquote>\n\n<blockquote>🐞 | اگر در عملکرد ربات با باگ یا مشکلی مواجه شدید، از طریق گیت هاب یا گروه رد فاکس اطلاع رسانی کنید</blockquote>\n\n<blockquote><a href=\"https://github.com/Mmd-Amir/Red Fox\">لینک گیت هاب</a></blockquote>";
+$text_panel_admin_login_template = ($__rxWOverride !== '') ? $__rxWOverride : "💎 | Version Bot: 2.4.12\n📌 | Version Mini App: 2.4.12\n<blockquote>🔹 | این ربات کاملاً رایگان است — نسخه REDFOX+ Security Hardened</blockquote>\n\n<blockquote>🔹 | هرگونه فروش یا دریافت وجه بابت این ربات تخلف محسوب می‌شود.</blockquote>\n\n<blockquote>🔹 | در صورت مشاهده فروش یا دریافت وجه، لطفاً وجه خود را پیگیری کرده و بازپس‌گیری نمایید.</blockquote>\n\n<blockquote>🐞 | اگر در عملکرد ربات با باگ یا مشکلی مواجه شدید، از طریق گیت هاب یا گروه رد فاکس اطلاع رسانی کنید</blockquote>\n\n<blockquote><a href=\"https://github.com/hojjatrad/RedFox-Security-Hardened\">لینک گیت هاب</a></blockquote>";
 
 if (!function_exists('normalizeXuiSingleSubscriptionBaseUrl')) {
 
@@ -11237,7 +11237,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
 7 - فاکتورهای قدیمی پرداخت نشده (بیش از ۳۰ روز)
 
 🛡 اگر در عملکرد ربات با باگ یا مشکلی مواجه شدید، از طریق گیت هاب یا گروه رد فاکس اطلاع رسانی کنید
-<a href=\"https://github.com/Mmd-Amir/Red Fox\">لینک گیت هاب</a>";
+<a href=\"https://github.com/hojjatrad/RedFox-Security-Hardened\">لینک گیت هاب</a>";
     $Response = json_encode([
         'inline_keyboard' => [
             [

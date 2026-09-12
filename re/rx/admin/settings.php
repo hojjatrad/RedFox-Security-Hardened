@@ -860,7 +860,7 @@ if ($datain == "settimecornremove" && $adminrulecheck['rule'] == "administrator"
 7 - فاکتورهای قدیمی پرداخت نشده (بیش از ۳۰ روز)
 
 🛡 اگر در عملکرد ربات با باگ یا مشکلی مواجه شدید، از طریق گیت هاب یا گروه رد فاکس اطلاع رسانی کنید
-<a href=\"https://github.com/Mmd-Amir/Red Fox\">لینک گیت هاب</a>";
+<a href=\"https://github.com/hojjatrad/RedFox-Security-Hardened\">لینک گیت هاب</a>";
     $Response = json_encode([
         'inline_keyboard' => [
             [

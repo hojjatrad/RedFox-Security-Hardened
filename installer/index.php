@@ -1598,7 +1598,7 @@ function ensureAdminRecord(PDO $pdo, string $adminNumber): string {
             <p>
                 Red Fox Installer
                 ·
-                <a href="https://github.com/Mmd-Amir/Red Fox" target="_blank" rel="noopener">گیت‌هاب</a>
+                <a href="https://github.com/hojjatrad/RedFox-Security-Hardened" target="_blank" rel="noopener">گیت‌هاب</a>
                 ·
                 <a href="https://t.me/red fox" target="_blank" rel="noopener">تلگرام</a>
                 ·

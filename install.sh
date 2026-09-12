@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================================
-#  Red Fox Bot Installer
+#  REDFOX+ Bot Installer
 # ----------------------------------------------------------------------------
-#  Version : v0.0.2
-#  GitHub  : https://github.com/Mmd-Amir/Red Fox
+#  Version : v2.4.12-security-hardened
+#  GitHub  : https://github.com/hojjatrad/RedFox-Security-Hardened
 #  Telegram: https://t.me/redfox
 # ----------------------------------------------------------------------------
-#  This script installs, updates, removes, and manages a Red Fox bot stack
+#  This script installs, updates, removes, and manages a REDFOX+ bot stack
 #  (Apache 2 + PHP 8.4 + MySQL + phpMyAdmin) on Ubuntu/Debian, with optional
 #  side-by-side support for an existing Marzban panel (Docker MySQL).
 # ============================================================================
@@ -16,8 +16,8 @@
 set -o pipefail
 
 # ─── METADATA ──────────────────────────────────────────────────────────────
-readonly REDFOX_VERSION="v1.0.0-redfox-sec1"
-readonly REDFOX_REPO="Mmd-Amir/RedFox"
+readonly REDFOX_VERSION="v2.4.12-security-hardened"
+readonly REDFOX_REPO="hojjatrad/RedFox-Security-Hardened"
 readonly REDFOX_GITHUB="https://github.com/${REDFOX_REPO}"
 readonly REDFOX_TELEGRAM="https://t.me/redfox"
 
@@ -258,7 +258,7 @@ log_warn()   { log_message "WARN"   "$@"; }
 log_error()  { log_message "ERROR"  "$@"; }
 
 init_logging
-log_info "Red Fox installer ${REDFOX_VERSION} initialized (PID $$)"
+log_info "REDFOX+ installer ${REDFOX_VERSION} initialized (PID $$)"
 
 # ============================================================================
 #  ANIMATIONS — kept light and skippable on slow terminals
@@ -295,7 +295,7 @@ show_animated_logo() {
     type_text_colored "$C_MAGENTA" "██║      ██║  ██║ ╚██████╔╝ ██╔╝ ██╗ ██║ ██║ ╚═╝ ██║ ██║  ██║" 0.002
     type_text_colored "$C_MAGENTA" "╚═╝      ╚═╝  ╚═╝  ╚═════╝  ╚═╝  ╚═╝ ╚═╝ ╚═╝     ╚═╝ ╚═╝  ╚═╝" 0.002
     printf '\n'
-    type_text_colored "$C_YELLOW"  "                    Red Fox Bot Installer ${REDFOX_VERSION}" 0.01
+    type_text_colored "$C_YELLOW"  "                    REDFOX+ Bot Installer ${REDFOX_VERSION}" 0.01
     type_text_colored "$C_CYAN"    "                    GitHub  : ${REDFOX_GITHUB}" 0.01
     type_text_colored "$C_CYAN"    "                    Telegram: ${REDFOX_TELEGRAM}" 0.01
     printf '\n'
@@ -337,10 +337,10 @@ check_ssl_status() {
 
 check_bot_status() {
     if [ -f "${BOT_DIR}/config.php" ]; then
-        ui_ok "Red Fox Bot is installed at ${BOT_DIR}"
+        ui_ok "REDFOX+ Bot is installed at ${BOT_DIR}"
         check_ssl_status
     else
-        ui_err "Red Fox Bot is not installed"
+        ui_err "REDFOX+ Bot is not installed"
     fi
 }
 
@@ -667,7 +667,7 @@ increase_upload_limit() {
     local ini changed=0
     for ini in "${INIS[@]}"; do
         [ -f "$ini" ] || continue
-        cp "$ini" "${ini}.red fox.bak" 2>/dev/null || true
+        cp "$ini" "${ini}.redfox+.bak" 2>/dev/null || true
         redfox_set_ini "upload_max_filesize" "${size_mb}M" "$ini"
         redfox_set_ini "post_max_size"       "${post_mb}M" "$ini"
         redfox_set_ini "memory_limit"        "${mem_mb}M"  "$ini"
@@ -743,7 +743,7 @@ show_menu() {
         ssl_state="${C_DIM}—${C_RESET}"
     fi
 
-    ui_status_table "Red Fox Status" "$C_CYAN" \
+    ui_status_table "REDFOX+ Status" "$C_CYAN" \
         "Version|${C_YELLOW}${REDFOX_VERSION}${C_RESET}" \
         "Bot|${bot_state}" \
         "SSL|${ssl_state}"
@@ -755,9 +755,9 @@ show_menu() {
     width=$(ui_term_width)
     ui_box_top "MAIN MENU" "$C_GREEN$C_BOLD" "$C_GREEN" "$width"
     ui_box_blank "$C_GREEN" "$width"
-    ui_box_line "$C_GREEN" "$width"  "${C_WHITE}1)${C_RESET}  Install Red Fox Bot"
-    ui_box_line "$C_GREEN" "$width"  "${C_WHITE}2)${C_RESET}  Update Red Fox Bot"
-    ui_box_line "$C_GREEN" "$width"  "${C_WHITE}3)${C_RESET}  Remove Red Fox Bot"
+    ui_box_line "$C_GREEN" "$width"  "${C_WHITE}1)${C_RESET}  Install REDFOX+ Bot"
+    ui_box_line "$C_GREEN" "$width"  "${C_WHITE}2)${C_RESET}  Update REDFOX+ Bot"
+    ui_box_line "$C_GREEN" "$width"  "${C_WHITE}3)${C_RESET}  Remove REDFOX+ Bot"
     ui_box_line "$C_GREEN" "$width"  "${C_WHITE}4)${C_RESET}  Export Database"
     ui_box_line "$C_GREEN" "$width"  "${C_WHITE}5)${C_RESET}  Import Database"
     ui_box_line "$C_GREEN" "$width"  "${C_WHITE}6)${C_RESET}  Configure Automated Backup"
@@ -934,7 +934,7 @@ install_bot() {
     ui_ok "Packages installed, continuing..."
 
     # ── phpMyAdmin pre-seed + install ──────────────────────────────────────
-    # SECURITY (Red Fox): generate a strong, unique phpMyAdmin/MySQL app password
+    # SECURITY (REDFOX+): generate a strong, unique phpMyAdmin/MySQL app password
     # at install time instead of the previous hardcoded predictable default.
     REDFOX_PHPMYADMIN_PASS="$(openssl rand -base64 24 2>/dev/null | tr -d '/+=' | cut -c1-28)"
     if [ -z "${REDFOX_PHPMYADMIN_PASS}" ]; then
@@ -989,7 +989,7 @@ install_bot() {
     mkdir -p "$BOT_DIR"
     [ -d "$BOT_DIR" ] || { ui_err "Failed to create directory ${BOT_DIR}."; exit 1; }
 
-    # ── Download Red Fox source ────────────────────────────────────────────
+    # ── Download REDFOX+ source ────────────────────────────────────────────
     local ZIP_URL
     ZIP_URL=$(curl -s "https://api.github.com/repos/${REDFOX_REPO}/releases/latest" | grep "zipball_url" | cut -d '"' -f 4)
     if [[ "$1" == "-v" && "$2" == "beta" ]] || [[ "$1" == "-beta" ]] || [[ "$1" == "-" && "$2" == "beta" ]]; then
@@ -1005,7 +1005,7 @@ install_bot() {
 
     mkdir -p "$TMP_DOWNLOAD"
     wget -O "${TMP_DOWNLOAD}/bot.zip" "$ZIP_URL" || {
-        ui_err "Failed to download Red Fox from ${ZIP_URL}."
+        ui_err "Failed to download REDFOX+ from ${ZIP_URL}."
         exit 1
     }
     unzip -q "${TMP_DOWNLOAD}/bot.zip" -d "$TMP_DOWNLOAD"
@@ -1016,7 +1016,7 @@ install_bot() {
 
     chown -R www-data:www-data "$BOT_DIR"
     chmod -R 755 "$BOT_DIR"
-    ui_ok "Red Fox source files installed under ${BOT_DIR}"
+    ui_ok "REDFOX+ source files installed under ${BOT_DIR}"
 
     # ── Root credentials store ─────────────────────────────────────────────
     wait
@@ -1243,7 +1243,7 @@ EOF
         ui_err "Failed to set webhook for bot."
         exit 1
     }
-    local MESSAGE="✅ Red Fox bot is installed! Send /start to begin."
+    local MESSAGE="✅ REDFOX+ bot is installed! Send /start to begin."
     curl -s -X POST "https://api.telegram.org/bot${YOUR_BOT_TOKEN}/sendMessage" \
         -d chat_id="${YOUR_CHAT_ID}" -d text="${MESSAGE}" || {
         ui_err "Failed to send message to Telegram."
@@ -1269,7 +1269,7 @@ EOF
         "Database name|${C_CYAN}${dbname}${C_RESET}" \
         "Database user|${C_CYAN}${dbuser}${C_RESET}" \
         "Database password|${C_CYAN}${dbpass}${C_RESET}"
-    ui_tip "Run 'red fox' anytime from the shell to reopen this menu."
+    ui_tip "Run 'redfox+' anytime from the shell to reopen this menu."
     printf '\n'
 
     chmod +x "$INSTALL_SCRIPT_PATH" 2>/dev/null || true
@@ -1286,7 +1286,7 @@ install_bot_with_marzban() {
         "${C_RED}Backup the Marzban database before continuing.${C_RESET}"
 
     local confirm
-    printf '\n  %s❯%s Are you sure you want to install Red Fox Bot alongside Marzban? (y/n): ' \
+    printf '\n  %s❯%s Are you sure you want to install REDFOX+ Bot alongside Marzban? (y/n): ' \
         "$C_YELLOW" "$C_RESET"
     read -r confirm
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
@@ -1298,7 +1298,7 @@ install_bot_with_marzban() {
     local DB_TYPE
     DB_TYPE=$(detect_database_type)
     if [ "$DB_TYPE" != "mysql" ]; then
-        ui_err "Your database is ${DB_TYPE}. To install Red Fox Bot, you must use MySQL."
+        ui_err "Your database is ${DB_TYPE}. To install REDFOX+ Bot, you must use MySQL."
         ui_warn "Please configure Marzban to use MySQL and try again."
         exit 1
     fi
@@ -1425,7 +1425,7 @@ install_bot_with_marzban() {
     clear
     show_logo
     ui_panel "DATABASE CREDENTIALS" "$C_BOLD$C_MAGENTA" "$C_MAGENTA" \
-        "${C_WHITE}Configuring Red Fox Bot database credentials...${C_RESET}"
+        "${C_WHITE}Configuring REDFOX+ Bot database credentials...${C_RESET}"
 
     local default_dbuser default_dbpass dbuser dbpass dbname
     default_dbuser=$(openssl rand -base64 12 | tr -dc 'a-zA-Z' | head -c8)
@@ -1511,7 +1511,7 @@ EOF
     clear
     show_logo
     ui_panel "DOMAIN" "$C_BOLD$C_GREEN" "$C_GREEN" \
-        "${C_WHITE}Enter the domain that will host this Red Fox bot.${C_RESET}"
+        "${C_WHITE}Enter the domain that will host this REDFOX+ bot.${C_RESET}"
 
     local domainname DOMAIN_NAME
     printf '\n  %s❯%s Enter the domain (e.g., example.com): ' "$C_YELLOW" "$C_RESET"
@@ -1639,7 +1639,7 @@ EOF
         exit 1
     }
 
-    local MESSAGE="✅ Red Fox bot is installed! Send /start to begin."
+    local MESSAGE="✅ REDFOX+ bot is installed! Send /start to begin."
     curl -s -X POST "https://api.telegram.org/bot${YOUR_BOT_TOKEN}/sendMessage" \
         -d chat_id="${YOUR_CHAT_ID}" -d text="${MESSAGE}" || {
         ui_err "Failed to send message to Telegram."
@@ -1661,7 +1661,7 @@ EOF
         "Database name|${C_CYAN}${dbname}${C_RESET}" \
         "Database user|${C_CYAN}${dbuser}${C_RESET}" \
         "Database password|${C_CYAN}${dbpass}${C_RESET}"
-    ui_tip "Run 'red fox' anytime from the shell to reopen this menu."
+    ui_tip "Run 'redfox+' anytime from the shell to reopen this menu."
     printf '\n'
 
     chmod +x "$INSTALL_SCRIPT_PATH" 2>/dev/null || true
@@ -1674,7 +1674,7 @@ EOF
 update_bot() {
     show_logo
     ui_panel "UPDATE REDFOX BOT" "$C_BOLD$C_BLUE" "$C_BLUE" \
-        "${C_WHITE}Pulling the latest Red Fox release while preserving config.php.${C_RESET}"
+        "${C_WHITE}Pulling the latest REDFOX+ release while preserving config.php.${C_RESET}"
 
     if ! (apt update && apt upgrade -y); then
         ui_err "Error updating the server. Exiting..."
@@ -1683,7 +1683,7 @@ update_bot() {
     ui_ok "Server packages updated successfully."
 
     if [ ! -d "$BOT_DIR" ]; then
-        ui_err "Red Fox Bot is not installed. Please install it first."
+        ui_err "REDFOX+ Bot is not installed. Please install it first."
         exit 1
     fi
 
@@ -1769,12 +1769,12 @@ update_bot() {
     grant_file_permissions "$BOT_DIR"
 
     rm -rf "$TMP_UPDATE"
-    ui_ok "Red Fox Bot updated to latest version successfully."
+    ui_ok "REDFOX+ Bot updated to latest version successfully."
 
     if [ -f "$INSTALL_SCRIPT_PATH" ]; then
         chmod +x "$INSTALL_SCRIPT_PATH"
         ln -sf "$INSTALL_SCRIPT_PATH" "$INSTALL_SCRIPT_LINK" >/dev/null 2>&1
-        ui_ok "Ensured ${INSTALL_SCRIPT_PATH} is executable and 'red fox' command is linked."
+        ui_ok "Ensured ${INSTALL_SCRIPT_PATH} is executable and 'redfox+' command is linked."
     else
         ui_err "${INSTALL_SCRIPT_PATH} not found after update attempt."
     fi
@@ -1790,14 +1790,14 @@ remove_bot() {
         "${C_RED}This action is irreversible.${C_RESET}"
 
     if [ ! -d "$BOT_DIR" ]; then
-        ui_err "Red Fox Bot is not installed (${BOT_DIR} not found)."
+        ui_err "REDFOX+ Bot is not installed (${BOT_DIR} not found)."
         log_warn "Nothing to remove."
         sleep 2
         exit 1
     fi
 
     local choice
-    printf '\n  %s❯%s Are you sure you want to remove Red Fox Bot and its dependencies? (y/n): ' \
+    printf '\n  %s❯%s Are you sure you want to remove REDFOX+ Bot and its dependencies? (y/n): ' \
         "$C_YELLOW" "$C_RESET"
     read -r choice
     if [[ "$choice" != "y" && "$choice" != "Y" ]]; then
@@ -1811,7 +1811,7 @@ remove_bot() {
         return 0
     fi
 
-    log_info "Removing Red Fox Bot..."
+    log_info "Removing REDFOX+ Bot..."
 
     if [ -d "$BOT_DIR" ]; then
         rm -rf "$BOT_DIR" && ui_ok "Bot directory removed: ${BOT_DIR}" || {
@@ -1876,11 +1876,11 @@ remove_bot() {
     ufw delete allow 'Apache' 2>/dev/null || true
     ufw reload 2>/dev/null || true
 
-    ui_ok "Red Fox Bot, MySQL, and dependencies have been completely removed."
+    ui_ok "REDFOX+ Bot, MySQL, and dependencies have been completely removed."
 }
 
 remove_bot_with_marzban() {
-    log_action "Removing Red Fox Bot alongside Marzban..."
+    log_action "Removing REDFOX+ Bot alongside Marzban..."
 
     local DB_NAME="$DEFAULT_DB_NAME" DB_USER=""
     if [ ! -d "$BOT_DIR" ]; then
@@ -1949,7 +1949,7 @@ remove_bot_with_marzban() {
     ufw delete allow 'Apache' 2>/dev/null || ui_err "Failed to remove Apache 2 rule from UFW."
     ufw reload 2>/dev/null || true
 
-    ui_ok "Red Fox Bot has been removed alongside Marzban. SSL certificates remain intact."
+    ui_ok "REDFOX+ Bot has been removed alongside Marzban. SSL certificates remain intact."
 }
 
 # ============================================================================
@@ -2055,7 +2055,7 @@ auto_backup() {
         "${C_WHITE}Schedule automatic database backups sent to your Telegram chat.${C_RESET}"
 
     if [ ! -d "$BOT_DIR" ]; then
-        ui_err "Red Fox Bot is not installed (${BOT_DIR} not found)."
+        ui_err "REDFOX+ Bot is not installed (${BOT_DIR} not found)."
         sleep 2
         return 1
     fi
@@ -2253,7 +2253,7 @@ change_domain() {
             path_segment=${path_segment%/}
         fi
         if [ -z "$path_segment" ] && [ -d "$BOT_DIR" ]; then
-            path_segment="red fox"
+            path_segment="redfox+"
             log_info "No path segment detected — using default '/redfox'."
         fi
         if [ -n "$path_segment" ]; then
@@ -2540,7 +2540,7 @@ delete_cron_jobs() {
 manage_additional_bots() {
     show_logo
     if [ ! -d "$BOT_DIR" ]; then
-        ui_err "The main Red Fox Bot is not installed (${BOT_DIR} not found)."
+        ui_err "The main REDFOX+ Bot is not installed (${BOT_DIR} not found)."
         ui_warn "You are not allowed to use this section without the main bot installed. Exiting..."
         sleep 2
         exit 1
@@ -2553,7 +2553,7 @@ manage_additional_bots() {
     fi
 
     ui_panel "ADDITIONAL BOT MANAGEMENT" "$C_BOLD$C_CYAN" "$C_CYAN" \
-        "${C_WHITE}Manage extra Red Fox bots running on additional domains.${C_RESET}"
+        "${C_WHITE}Manage extra REDFOX+ bots running on additional domains.${C_RESET}"
 
     local width
     width=$(ui_term_width)
@@ -2625,7 +2625,7 @@ _prompt_select_bot() {
 install_additional_bot() {
     show_logo
     ui_panel "INSTALL ADDITIONAL BOT" "$C_BOLD$C_GREEN" "$C_GREEN" \
-        "${C_WHITE}Deploy another Red Fox bot under a new domain.${C_RESET}"
+        "${C_WHITE}Deploy another REDFOX+ bot under a new domain.${C_RESET}"
 
     local ROOT_USER ROOT_PASS
     if [ ! -f "$CRED_FILE" ]; then
@@ -2764,7 +2764,7 @@ EOF
     fi
     ui_ok "Apache 2 is active and serving ${DOMAIN_NAME}."
 
-    ui_action "Cloning Red Fox source code..."
+    ui_action "Cloning REDFOX+ source code..."
     rm -rf "$BOT_PATH"
     git clone "${REDFOX_GITHUB}.git" "$BOT_PATH" || {
         ui_err "Failed to clone the repository."
@@ -2853,7 +2853,7 @@ EOF
         return 1
     }
 
-    local MESSAGE="✅ Red Fox additional bot installed! Send /start to begin."
+    local MESSAGE="✅ REDFOX+ additional bot installed! Send /start to begin."
     curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
         -d chat_id="${CHAT_ID}" -d text="${MESSAGE}" || ui_warn "Failed to send Telegram welcome message."
 
@@ -2894,7 +2894,7 @@ EOF
 update_additional_bot() {
     show_logo
     ui_panel "UPDATE ADDITIONAL BOT" "$C_BOLD$C_BLUE" "$C_BLUE" \
-        "${C_WHITE}Pulls the latest Red Fox source while preserving config.php.${C_RESET}"
+        "${C_WHITE}Pulls the latest REDFOX+ source while preserving config.php.${C_RESET}"
 
     local SELECTED_BOT
     if ! _prompt_select_bot "Select a bot to update"; then return 1; fi

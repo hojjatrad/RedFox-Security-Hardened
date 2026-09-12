@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/runtime_core.php"
+         colors="true"
+         failOnRisky="true"
+         failOnWarning="true">
+    <testsuites>
+        <testsuite name="Runtime">
+            <file>tests/runtime_core.php</file>
+            <file>tests/runtime_dependencies.php</file>
+            <file>tests/runtime_hosting_secrets.php</file>
+            <file>tests/runtime_hosting_secrets_concurrency.php</file>
+            <file>tests/runtime_security.php</file>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory suffix=".php">lib</directory>
+            <directory suffix=".php">panel</directory>
+        </include>
+    </source>
+</phpunit>

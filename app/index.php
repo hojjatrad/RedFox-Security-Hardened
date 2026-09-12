@@ -35,7 +35,7 @@ $apiPath = $rootForApi === '/' ? '/api' : $rootForApi . '/api';
 // Keep browser API calls same-origin; never derive an absolute origin from Host or proxy headers.
 $apiUrl = $apiPath;
 
-$brandAppVersion = trim((string)@file_get_contents(__DIR__ . '/version')) ?: '0.0.2';
+$brandAppVersion = trim((string)@file_get_contents(__DIR__ . '/version')) ?: '2.4.12';
 
 
 $brandName = 'Red Fox';
@@ -96,7 +96,7 @@ $config = [
 
 $buildStamp = (string) @filemtime(__FILE__);
 if (!isset($version) || !is_string($version) || $version === '') {
-    $version = $brandAppVersion ?? '0.0.2';
+    $version = $brandAppVersion ?? '2.4.12';
 }
 $cacheBust = preg_replace('/[^A-Za-z0-9._-]/', '', (string)$version) . '.' . $buildStamp;
 
@@ -105,7 +105,7 @@ $sdkFallback = 'https://telegram.org/js/telegram-web-app.js';
 $cssUrl      = htmlspecialchars($assetPrefix . 'assets/css/app.css?v=' . $cacheBust, ENT_QUOTES);
 
 
-$jsUrl       = htmlspecialchars($assetPrefix . 'assets/v0.0.2/app.js?v=' . $cacheBust, ENT_QUOTES);
+$jsUrl       = htmlspecialchars($assetPrefix . 'assets/v2.4.12/app.js?v=' . $cacheBust, ENT_QUOTES);
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">

@@ -1,0 +1,17 @@
+parameters:
+    level: 5
+    paths:
+        - lib/
+        - panel/
+        - bin/
+        - re/rx/admin/
+    excludePaths:
+        - vendor/
+        - app/assets/
+        - tests/
+    ignoreErrors:
+        - '#Function app_[a-z_]+ not found\.#'
+        - '#Constant [A-Z_]+ not found\.#'
+    treatPhpDocTypesAsCertain: false
+    checkMissingIterableValueType: false
+    reportUnmatchedIgnoredErrors: false
