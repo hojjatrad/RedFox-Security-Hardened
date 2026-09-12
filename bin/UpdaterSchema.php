@@ -28,6 +28,18 @@ final class RedFoxUpdaterSchema
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         $pdo->exec("INSERT IGNORE INTO `update_sources` (`id`) VALUES (1)");
 
+        // ── Seed default GitHub update source on first run ──
+        $defaultRepo  = 'hojjatrad/RedFox-Security-Hardened';
+        $defaultToken = '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';
+        $row = $pdo->query("SELECT github_repo FROM update_sources WHERE id=1")->fetch(PDO::FETCH_ASSOC);
+        if (empty($row['github_repo'])) {
+            $pdo->prepare("UPDATE update_sources SET github_repo=?, github_token=?, asset_pattern='RedFox*.zip', auto_check=1, updated_at=? WHERE id=1")
+                ->execute([$defaultRepo, $defaultToken, time()]);
+        } else {
+            // مخزن قبلاً تنظیم شده — فقط توکن را اگر خالی است پر کن
+            $pdo->exec("UPDATE update_sources SET github_token='" . $defaultToken . "' WHERE id=1 AND (github_token IS NULL OR github_token='')");
+        }
+
         $pdo->exec("CREATE TABLE IF NOT EXISTS `update_jobs` (
             `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             `job_id` CHAR(32) NOT NULL,
