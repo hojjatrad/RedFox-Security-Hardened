@@ -15,6 +15,7 @@ final class RedFoxUpdaterSchema
         $pdo->exec("CREATE TABLE IF NOT EXISTS `update_sources` (
             `id` TINYINT UNSIGNED PRIMARY KEY,
             `github_repo` VARCHAR(191) NULL,
+            `github_token` VARCHAR(500) NULL,
             `asset_pattern` VARCHAR(191) NOT NULL DEFAULT 'RedFox*.zip',
             `allow_unsigned_local` TINYINT(1) NOT NULL DEFAULT 0,
             `auto_check` TINYINT(1) NOT NULL DEFAULT 1,
@@ -28,16 +29,24 @@ final class RedFoxUpdaterSchema
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         $pdo->exec("INSERT IGNORE INTO `update_sources` (`id`) VALUES (1)");
 
+        // ── Ensure github_token column exists (for older installs) ──
+        self::addMissingColumns($pdo, 'update_sources', [
+            'github_repo'  => "VARCHAR(191) NULL",
+            'github_token' => "VARCHAR(500) NULL",
+            'last_source'  => "VARCHAR(30) NULL",
+            'last_file'    => "VARCHAR(500) NULL",
+        ]);
+
         // ── Seed default GitHub update source on first run ──
         $defaultRepo  = 'hojjatrad/RedFox-Security-Hardened';
         $defaultToken = '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';
-        $row = $pdo->query("SELECT github_repo FROM update_sources WHERE id=1")->fetch(PDO::FETCH_ASSOC);
+        $row = $pdo->query("SELECT github_repo, github_token FROM update_sources WHERE id=1")->fetch(PDO::FETCH_ASSOC);
         if (empty($row['github_repo'])) {
             $pdo->prepare("UPDATE update_sources SET github_repo=?, github_token=?, asset_pattern='RedFox*.zip', auto_check=1, updated_at=? WHERE id=1")
                 ->execute([$defaultRepo, $defaultToken, time()]);
-        } else {
-            // مخزن قبلاً تنظیم شده — فقط توکن را اگر خالی است پر کن
-            $pdo->exec("UPDATE update_sources SET github_token='" . $defaultToken . "' WHERE id=1 AND (github_token IS NULL OR github_token='')");
+        } elseif (empty($row['github_token'])) {
+            $pdo->prepare("UPDATE update_sources SET github_token=?, updated_at=? WHERE id=1")
+                ->execute([$defaultToken, time()]);
         }
 
         $pdo->exec("CREATE TABLE IF NOT EXISTS `update_jobs` (
@@ -66,11 +75,6 @@ final class RedFoxUpdaterSchema
             KEY `idx_uj_status_time` (`status`,`created_at`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-        self::addMissingColumns($pdo, 'update_sources', [
-            'last_source' => "VARCHAR(30) NULL",
-            'last_file' => "VARCHAR(500) NULL",
-            'github_token' => "VARCHAR(500) NULL",
-        ]);
         self::addMissingColumns($pdo, 'update_jobs', [
             'progress_percent' => "TINYINT UNSIGNED NOT NULL DEFAULT 0",
             'progress_stage' => "VARCHAR(100) NULL",
