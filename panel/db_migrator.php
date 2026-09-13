@@ -142,7 +142,7 @@ function mz_rows_to_sql(PDO $pdo, string $table, array $rows): string {
 
 // ── AJAX handler ──
 if (isset($_GET['ajax'])) {
-    ob_end_clean();
+    while (ob_get_level() > 0) ob_end_clean();
     header('Content-Type: application/json; charset=utf-8');
     $action = (string)$_GET['ajax'];
 
@@ -398,12 +398,18 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
 
     if ($confirmText !== 'YES IMPORT DATA') {
         $importResult = ['ok'=>false, 'error'=>'عبارت تأیید دقیق نیست.'];
-    } elseif ($src === '' || !preg_match('/^[A-Za-z0-9_]+$/', $src)) {
+    } elseif ($src === '' || !preg_match('/^[A-Za-z0-9_.]+$/', $src)) {
         $importResult = ['ok'=>false, 'error'=>'نام دیتابیس نامعتبر.'];
     } else {
-        $srcPdo = mz_connect_db($_dbhost, $_dbuser, $_dbpass, $src);
+        $customHost = (string)($_POST['custom_host'] ?? '');
+        $customUser = (string)($_POST['custom_user'] ?? '');
+        $customPass = (string)($_POST['custom_pass'] ?? '');
+        $connectHost = $customHost !== '' ? $customHost : $_dbhost;
+        $connectUser = $customUser !== '' ? $customUser : $_dbuser;
+        $connectPass = $customPass !== '' ? $customPass : $_dbpass;
+        $srcPdo = mz_connect_db($connectHost, $connectUser, $connectPass, $src);
         if (!$srcPdo) {
-            $importResult = ['ok'=>false, 'error'=>'اتصال به دیتابیس مبدأ ناموفق.'];
+            $importResult = ['ok'=>false, 'error'=>'اتصال به دیتابیس مبدأ ناموفق. میزبان: '.$connectHost.' کاربر: '.$connectUser];
         } else {
             try {
                 $imported = [];
@@ -751,7 +757,8 @@ async function refreshDbList() {
 }
 
 async function fetchJSON(url) {
-    const r = await fetch(url, {credentials:'same-origin'});
+    const sep = url.includes('?') ? '&' : '?';
+    const r = await fetch(url + sep + 'rx_csrf_token=' + encodeURIComponent(CSRF), {credentials:'same-origin'});
     const text = await r.text();
     try { return JSON.parse(text); }
     catch(e) { return {ok:false, error:'پاسخ سرور نامعتبر است.\n\n'+text.substring(0,300)}; }

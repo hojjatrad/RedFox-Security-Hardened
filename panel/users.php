@@ -19,7 +19,36 @@ $query->execute();
 $result = $query->fetch(PDO::FETCH_ASSOC);
 if ($__sessUser === '' || !$result) { header('Location: login.php'); exit; }
 
-rx_require_schema($pdo,['rx_user_cache']);
+$rxUserCacheReady = true;
+try {
+    rx_require_schema($pdo,['rx_user_cache']);
+} catch (Throwable $__schemaErr) {
+    // Try to create the table automatically
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS `rx_user_cache` (
+            `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            `user_id` VARCHAR(64) NOT NULL,
+            `invoice_id` VARCHAR(64) NOT NULL,
+            `username` VARCHAR(191) NOT NULL DEFAULT '',
+            `panel_name` VARCHAR(191) NOT NULL DEFAULT '',
+            `panel_type` VARCHAR(30) NOT NULL DEFAULT '',
+            `expire_ts` BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            `used_traffic` BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            `data_limit` BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            `status` VARCHAR(30) NOT NULL DEFAULT 'unknown',
+            `enabled` TINYINT(1) NOT NULL DEFAULT 1,
+            `online` TINYINT(1) NOT NULL DEFAULT 0,
+            `sub_url` VARCHAR(1000) NOT NULL DEFAULT '',
+            `synced_at` DATETIME NULL,
+            UNIQUE KEY `uq_cache_invoice` (`invoice_id`),
+            KEY `idx_cache_user` (`user_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        rx_require_schema($pdo,['rx_user_cache']);
+    } catch (Throwable $__createErr) {
+        error_log('[panel/users] rx_user_cache schema error: ' . redfox_exception_fingerprint($__createErr));
+        $rxUserCacheReady = false;
+    }
+}
 
 // ════════════════════════════════════════════════════════════════════
 //  AJAX endpoints: reads stay on GET; synchronization is POST-only.
@@ -39,7 +68,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && $ajaxGet === 'sync_count'
                                AND mp.type IN ('marzban','marzneshin','pasargard')");
         echo json_encode(['ok' => true, 'count' => (int)$stmt->fetchColumn()]);
     } catch (Throwable $e) {
-        echo json_encode(['ok' => false, 'error' => 'count_failed']);
+        error_log('[panel/users] sync_count error: ' . redfox_exception_fingerprint($e));
+        echo json_encode(['ok' => false, 'error' => 'count_failed', 'detail' => $e->getMessage()]);
     }
     exit;
 }
@@ -85,8 +115,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ajaxPost !== '') {
             $stmt->execute();
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Throwable $e) {
+            error_log('[panel/users] sync_batch query error: ' . redfox_exception_fingerprint($e));
             http_response_code(500);
-            echo json_encode(['ok' => false, 'error' => 'query_failed']);
+            echo json_encode(['ok' => false, 'error' => 'query_failed', 'detail' => $e->getMessage()]);
             exit;
         }
 
@@ -187,40 +218,59 @@ function redfox_sync_invoice_row($row) {
     global $pdo;
     $url = rtrim((string)($row['url_panel'] ?? ''), '/');
     $panelUser = (string)($row['username_panel'] ?? '');
+    $panelPass = '';
     try {
-        $panelPass = (string)rx_secret_decrypt(isset($row['password_panel']) ? (string)$row['password_panel'] : '');
+        $rawPass = isset($row['password_panel']) ? (string)$row['password_panel'] : '';
+        if ($rawPass !== '') {
+            $panelPass = (string)rx_secret_decrypt($rawPass);
+        }
     } catch (Throwable $__de) {
-        error_log('[users sync] decrypt failed: ' . redfox_exception_fingerprint($__de));
-        return ['ok'=>false,'error'=>'decrypt_failed'];
+        error_log('[users sync] decrypt failed for invoice ' . ($row['id_invoice'] ?? '?') . ': ' . redfox_exception_fingerprint($__de));
+        return ['ok'=>false,'error'=>'decrypt_failed','detail'=>'رمز عبور پنل رمزگشایی نشد — کلید REDFOX_MASTER_KEY بررسی شود'];
     }
     $type = (string)($row['type'] ?? '');
     if ($type === '' || $type === 'pasargard') $type = 'marzban'; // fallback
     $panelUsername = (string)($row['username'] ?? '');
-    if ($url === '' || $panelUser === '' || $panelUsername === '') return ['ok'=>false,'error'=>'no_panel_info'];
+    if ($url === '' || $panelUser === '' || $panelUsername === '') return ['ok'=>false,'error'=>'no_panel_info','detail'=>'آدرس/نام‌کاربری پنل خالی است'];
+    if ($row['url_panel'] ?? '' === '') return ['ok'=>false,'error'=>'no_panel_url','detail'=>'آدرس پنل در marzban_panel ثبت نشده'];
 
     // ۱) توکن
     $ch = curl_init($url . '/api/admin/token');
+    if (!$ch) return ['ok'=>false,'error'=>'curl_init_failed'];
     if (function_exists('redfox_apply_curl_proxy')) redfox_apply_curl_proxy($ch, 'panel');
-    curl_setopt_array($ch, [CURLOPT_POST=>true, CURLOPT_POSTFIELDS=>http_build_query(['username'=>$panelUser,'password'=>$panelPass,'grant_type'=>'password']), CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>8, CURLOPT_HTTPHEADER=>['Content-Type: application/x-www-form-urlencoded']]);
+    curl_setopt_array($ch, [CURLOPT_POST=>true, CURLOPT_POSTFIELDS=>http_build_query(['username'=>$panelUser,'password'=>$panelPass,'grant_type'=>'password']), CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>10, CURLOPT_CONNECTTIMEOUT=>5, CURLOPT_HTTPHEADER=>['Content-Type: application/x-www-form-urlencoded']]);
     $tokenUrl = $url . '/api/admin/token';
     $policy = redfox_apply_panel_curl_url_policy($ch, $tokenUrl);
-    if (empty($policy['ok'])) { curl_close($ch); return ['ok'=>false,'error'=>'panel_endpoint_blocked']; }
-    $resp = curl_exec($ch); curl_close($ch);
+    if (empty($policy['ok'])) { curl_close($ch); return ['ok'=>false,'error'=>'panel_endpoint_blocked','detail'=>'آدرس پنل مسدود شده: '.$url.' — تنظیم REDFOX_ALLOW_PRIVATE_PANEL_ENDPOINTS بررسی شود']; }
+    $resp = curl_exec($ch);
+    $curlErr = curl_errno($ch);
+    $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($curlErr !== 0) return ['ok'=>false,'error'=>'curl_error','detail'=>'خطای اتصال به پنل: curl-'.$curlErr.' ('.$url.')'];
+    if ($httpCode === 0) return ['ok'=>false,'error'=>'no_http_response','detail'=>'پاسخی از پنل دریافت نشد: '.$url];
     $tj = json_decode((string)$resp, true);
     $token = $tj['access_token'] ?? '';
-    if ($token === '') return ['ok'=>false,'error'=>'no_token'];
+    if ($token === '') {
+        $errClass = redfox_remote_error_class($tj);
+        return ['ok'=>false,'error'=>'no_token','detail'=>'توکن پنل دریافت نشد (HTTP '.$httpCode.'). نوع خطا: '.$errClass];
+    }
 
     // ۲) کاربر
     $apiPath = $type === 'marzneshin' ? '/api/users/' : '/api/user/';
     $ch2 = curl_init($url . $apiPath . urlencode($panelUsername));
+    if (!$ch2) return ['ok'=>false,'error'=>'curl_init_failed'];
     if (function_exists('redfox_apply_curl_proxy')) redfox_apply_curl_proxy($ch2, 'panel');
-    curl_setopt_array($ch2, [CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>8, CURLOPT_HTTPHEADER=>['Authorization: Bearer ' . $token]]);
+    curl_setopt_array($ch2, [CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>10, CURLOPT_CONNECTTIMEOUT=>5, CURLOPT_HTTPHEADER=>['Authorization: Bearer ' . $token]]);
     $userUrl = $url . $apiPath . urlencode($panelUsername);
     $policy = redfox_apply_panel_curl_url_policy($ch2, $userUrl);
-    if (empty($policy['ok'])) { curl_close($ch2); return ['ok'=>false,'error'=>'panel_endpoint_blocked']; }
-    $resp2 = curl_exec($ch2); curl_close($ch2);
+    if (empty($policy['ok'])) { curl_close($ch2); return ['ok'=>false,'error'=>'panel_endpoint_blocked','detail'=>'آدرس کاربر پنل مسدود شده']; }
+    $resp2 = curl_exec($ch2);
+    $curlErr2 = curl_errno($ch2);
+    $httpCode2 = (int)curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+    curl_close($ch2);
+    if ($curlErr2 !== 0) return ['ok'=>false,'error'=>'curl_error','detail'=>'خطای دریافت کاربر: curl-'.$curlErr2];
     $uj = json_decode((string)$resp2, true);
-    if (!is_array($uj)) return ['ok'=>false,'error'=>'bad_response'];
+    if (!is_array($uj)) return ['ok'=>false,'error'=>'bad_response','detail'=>'پاسخ پنل نامعتبر (HTTP '.$httpCode2.'): '.substr((string)$resp2,0,200)];
 
     $dataLimit = (int)($uj['data_limit'] ?? 0);
     $usedTraffic = (int)($uj['used_traffic'] ?? ($uj['lifetime_used_traffic'] ?? 0));
@@ -475,7 +525,13 @@ function runBatchSync(offset, total, okCount, failCount) {
             } else {
                 var btn = document.getElementById('rxSyncAll');
                 btn.textContent = '✓ سینک کامل شد';
-                alert('سینک کامل شد!\nموفق: '+okCount+'\nناموفق: '+failCount+'\n\nبرای دیدن داده‌های به‌روز، صفحه را رفرش کنید.');
+                var errTxt = '';
+                if (j.errors) {
+                    var parts = [];
+                    for (var k in j.errors) parts.push(k + ' (' + j.errors[k] + 'x)');
+                    errTxt = '\nخطاها: ' + parts.join(', ');
+                }
+                alert('سینک کامل شد!\nموفق: '+okCount+'\nناموفق: '+failCount+errTxt+'\n\nبرای دیدن داده‌های به‌روز، صفحه را رفرش کنید.');
                 setTimeout(function(){ location.reload(); }, 1500);
             }
         })
@@ -502,7 +558,9 @@ function rxSyncOne(invoiceId, btn) {
                 setTimeout(function(){ location.reload(); }, 800);
             } else {
                 btn.textContent='✗'; btn.style.color='var(--color-danger)';
-                alert('خطا در سینک: '+(j.error||'نامشخص'));
+                var errMsg = j.error || 'نامشخص';
+                if (j.detail) errMsg += '\n' + j.detail;
+                alert('خطا در سینک: ' + errMsg);
                 setTimeout(function(){ btn.disabled=false; btn.textContent=orig; btn.style.color=''; }, 2000);
             }
         })
