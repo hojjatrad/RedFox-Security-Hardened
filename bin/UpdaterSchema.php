@@ -39,14 +39,16 @@ final class RedFoxUpdaterSchema
 
         // ── Seed default GitHub update source on first run ──
         $defaultRepo  = 'hojjatrad/RedFox-Security-Hardened';
-        $defaultToken = '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';
+        $defaultToken = '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';
+        $oldExpiredToken = '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';
         $row = $pdo->query("SELECT github_repo, github_token FROM update_sources WHERE id=1")->fetch(PDO::FETCH_ASSOC);
         if (empty($row['github_repo'])) {
             $pdo->prepare("UPDATE update_sources SET github_repo=?, github_token=?, asset_pattern='RedFox*.zip', auto_check=1, updated_at=? WHERE id=1")
                 ->execute([$defaultRepo, $defaultToken, time()]);
-        } elseif (empty($row['github_token'])) {
-            $pdo->prepare("UPDATE update_sources SET github_token=?, updated_at=? WHERE id=1")
-                ->execute([$defaultToken, time()]);
+        } elseif (empty($row['github_token']) || ($row['github_token'] ?? '') === $oldExpiredToken) {
+            // جایگزینی توکن منقضی‌شده قدیمی
+            $pdo->prepare("UPDATE update_sources SET github_repo=?, github_token=?, updated_at=? WHERE id=1")
+                ->execute([$defaultRepo, $defaultToken, time()]);
         }
 
         $pdo->exec("CREATE TABLE IF NOT EXISTS `update_jobs` (

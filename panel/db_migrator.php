@@ -147,15 +147,20 @@ if (isset($_GET['ajax'])) {
     $action = (string)$_GET['ajax'];
 
     try {
-        // ── لیست دیتابیس‌ها ──
+        // ── لیست دیتابیس‌ها (با امکان credential سفارشی) ──
         if ($action === 'list_dbs') {
-            $tmp = mz_connect_db($_dbhost, $_dbuser, $_dbpass, $_dbname);
+            $customHost = (string)($_GET['host'] ?? '');
+            $customUser = (string)($_GET['user'] ?? '');
+            $customPass = (string)($_GET['pass'] ?? '');
+            $connectHost = $customHost !== '' ? $customHost : $_dbhost;
+            $connectUser = $customUser !== '' ? $customUser : $_dbuser;
+            $connectPass = $customPass !== '' ? $customPass : $_dbpass;
+            $tmp = mz_connect_db($connectHost, $connectUser, $connectPass, $_dbname);
             if (!$tmp) {
-                // تلاش با information_schema
-                $tmp = mz_connect_db($_dbhost, $_dbuser, $_dbpass, 'information_schema');
+                $tmp = mz_connect_db($connectHost, $connectUser, $connectPass, 'information_schema');
             }
             if (!$tmp) {
-                echo json_encode(['ok'=>false,'error'=>'اتصال به MySQL ناموفق. میزبان: '.$_dbhost.' کاربر: '.$_dbuser]);
+                echo json_encode(['ok'=>false,'error'=>'اتصال به MySQL ناموفق. میزبان: '.$connectHost.' کاربر: '.$connectUser]);
                 exit;
             }
             $dbs = mz_list_all_databases($tmp, $_dbname);
@@ -165,7 +170,7 @@ if (isset($_GET['ajax'])) {
             foreach ($dbs as $db) {
                 $info = ['name'=>$db, 'tables'=>0, 'rows'=>0, 'is_current'=>($db === $_dbname)];
                 try {
-                    $tmpDb = mz_connect_db($_dbhost, $_dbuser, $_dbpass, $db);
+                    $tmpDb = mz_connect_db($connectHost, $connectUser, $connectPass, $db);
                     if ($tmpDb) {
                         $tables = $tmpDb->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
                         $info['tables'] = count($tables);
@@ -183,28 +188,46 @@ if (isset($_GET['ajax'])) {
             exit;
         }
 
-        // ── اتصال به دیتابیس دستی ──
+        // ── تست اتصال به دیتابیس (با امکان credential سفارشی) ──
         if ($action === 'test_db') {
             $db = (string)($_GET['db'] ?? '');
-            if ($db === '' || !preg_match('/^[A-Za-z0-9_]+$/', $db)) {
-                echo json_encode(['ok'=>false,'error'=>'نام دیتابیس نامعتبر']); exit;
+            if ($db === '' || !preg_match('/^[A-Za-z0-9_.]+$/', $db)) {
+                echo json_encode(['ok'=>false,'error'=>'نام دیتابیس نامعتبر — فقط حروف، اعداد، نقطه و زیرخط مجاز است']); exit;
             }
-            $testPdo = mz_connect_db($_dbhost, $_dbuser, $_dbpass, $db);
+            // اگر credential سفارشی ارسال شده
+            $customHost = (string)($_GET['host'] ?? '');
+            $customUser = (string)($_GET['user'] ?? '');
+            $customPass = (string)($_GET['pass'] ?? '');
+            $connectHost = $customHost !== '' ? $customHost : $_dbhost;
+            $connectUser = $customUser !== '' ? $customUser : $_dbuser;
+            $connectPass = $customPass !== '' ? $customPass : $_dbpass;
+            $testPdo = mz_connect_db($connectHost, $connectUser, $connectPass, $db);
             if (!$testPdo) {
-                echo json_encode(['ok'=>false,'error'=>'اتصال به دیتابیس `'.$db.'` ناموفق — نام را بررسی کنید']); exit;
+                // تست اتصال بدون dbname برای بررسی credential
+                $basePdo = mz_connect_db($connectHost, $connectUser, $connectPass, '');
+                if (!$basePdo) {
+                    echo json_encode(['ok'=>false,'error'=>'اتصال به MySQL ناموفق — میزبان: '.$connectHost.' کاربر: '.$connectUser.' — لطفاً میزبان، نام کاربری و رمز عبور را بررسی کنید']); exit;
+                }
+                echo json_encode(['ok'=>false,'error'=>'اتصال به دیتابیس `'.$db.'` ناموفق — دیتابیس وجود ندارد یا کاربر MySQL مجوز دسترسی ندارد.']); exit;
             }
             $tables = $testPdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
             echo json_encode(['ok'=>true,'db'=>$db,'tables'=>count($tables)]);
             exit;
         }
 
-        // ── تحلیل دیتابیس ──
+        // ── تحلیل دیتابیس (با امکان credential سفارشی) ──
         if ($action === 'analyze_db') {
             $src = (string)($_GET['db'] ?? '');
-            if ($src === '' || !preg_match('/^[A-Za-z0-9_]+$/', $src)) {
+            if ($src === '' || !preg_match('/^[A-Za-z0-9_.]+$/', $src)) {
                 echo json_encode(['ok'=>false,'error'=>'نام دیتابیس نامعتبر']); exit;
             }
-            $srcPdo = mz_connect_db($_dbhost, $_dbuser, $_dbpass, $src);
+            $customHost = (string)($_GET['host'] ?? '');
+            $customUser = (string)($_GET['user'] ?? '');
+            $customPass = (string)($_GET['pass'] ?? '');
+            $connectHost = $customHost !== '' ? $customHost : $_dbhost;
+            $connectUser = $customUser !== '' ? $customUser : $_dbuser;
+            $connectPass = $customPass !== '' ? $customPass : $_dbpass;
+            $srcPdo = mz_connect_db($connectHost, $connectUser, $connectPass, $src);
             if (!$srcPdo) {
                 echo json_encode(['ok'=>false,'error'=>'اتصال به دیتابیس `'.$src.'` ناموفق']); exit;
             }
@@ -268,15 +291,21 @@ if (isset($_GET['ajax'])) {
             exit;
         }
 
-        // ── پیش‌نمایش مهاجرت ──
+        // ── پیش‌نمایش مهاجرت (با امکان credential سفارشی) ──
         if ($action === 'preview_import') {
             $mode = (string)($_GET['mode'] ?? '');
             $src = (string)($_GET['db'] ?? '');
             $agentId = (string)($_GET['agent_id'] ?? '');
-            if ($src === '' || !preg_match('/^[A-Za-z0-9_]+$/', $src)) {
+            if ($src === '' || !preg_match('/^[A-Za-z0-9_.]+$/', $src)) {
                 echo json_encode(['ok'=>false,'error'=>'نام دیتابیس نامعتبر']); exit;
             }
-            $srcPdo = mz_connect_db($_dbhost, $_dbuser, $_dbpass, $src);
+            $customHost = (string)($_GET['host'] ?? '');
+            $customUser = (string)($_GET['user'] ?? '');
+            $customPass = (string)($_GET['pass'] ?? '');
+            $connectHost = $customHost !== '' ? $customHost : $_dbhost;
+            $connectUser = $customUser !== '' ? $customUser : $_dbuser;
+            $connectPass = $customPass !== '' ? $customPass : $_dbpass;
+            $srcPdo = mz_connect_db($connectHost, $connectUser, $connectPass, $src);
             if (!$srcPdo) {
                 echo json_encode(['ok'=>false,'error'=>'اتصال ناموفق']); exit;
             }
@@ -545,9 +574,17 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
         <div class="search-box"><input type="text" id="db-search" placeholder="جستجوی نام دیتابیس..." class="input-field" oninput="filterDbs()"></div>
         <div class="db-list" id="db-list"></div>
         <div class="manual-db">
-            <p style="color:var(--rx-muted);font-size:.85em;margin:0 0 10px">اگر دیتابیس مورد نظر در لیست نیست، نام آن را وارد کنید:</p>
-            <input type="text" id="manual-db-name" placeholder="نام دیتابیس" class="input-field" style="max-width:250px;display:inline-block" oninput="onManualInput()">
-            <button class="rx-btn rx-btn-primary rx-btn-sm" id="btn-manual-test" onclick="testManualDb()">🔌 تست اتصال</button>
+            <p style="color:var(--rx-muted);font-size:.85em;margin:0 0 10px">اگر دیتابیس مورد نظر در لیست نیست یا دیتابیس دیگری روی سرور هست، اطلاعات زیر را وارد کنید:</p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:520px;margin:0 auto 10px;text-align:right">
+                <div><label style="font-size:.8em;color:var(--rx-muted)">میزبان (اختیاری)</label><input type="text" id="custom-host" placeholder="<?= mz_h($_dbhost) ?>" class="input-field" style="max-width:100%"></div>
+                <div><label style="font-size:.8em;color:var(--rx-muted)">نام کاربری MySQL</label><input type="text" id="custom-user" placeholder="<?= mz_h($_dbuser) ?>" class="input-field" style="max-width:100%"></div>
+                <div><label style="font-size:.8em;color:var(--rx-muted)">رمز عبور MySQL</label><input type="password" id="custom-pass" placeholder="رمز عبور" class="input-field" style="max-width:100%"></div>
+                <div><label style="font-size:.8em;color:var(--rx-muted)">نام دیتابیس</label><input type="text" id="manual-db-name" placeholder="نام دیتابیس" class="input-field" style="max-width:100%" oninput="onManualInput()"></div>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+                <button class="rx-btn rx-btn-primary rx-btn-sm" id="btn-manual-test" onclick="testManualDb()">🔌 تست اتصال</button>
+                <button class="rx-btn rx-btn-ghost rx-btn-sm" onclick="refreshDbList()">🔄 بارگذاری مجدد لیست با credential جدید</button>
+            </div>
             <div id="manual-db-status" style="margin-top:8px;font-size:.85em"></div>
         </div>
         <div style="margin-top:14px;text-align:center"><button class="rx-btn rx-btn-primary" id="btn-analyze" disabled onclick="goStep2()">🔍 تحلیل دیتابیس انتخاب‌شده</button></div>
@@ -629,6 +666,9 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
             <input type="hidden" name="mode" id="exec-mode">
             <input type="hidden" name="source_db" id="exec-db">
             <input type="hidden" name="agent_id" id="exec-agent">
+            <input type="hidden" name="custom_host" id="exec-custom-host">
+            <input type="hidden" name="custom_user" id="exec-custom-user">
+            <input type="hidden" name="custom_pass" id="exec-custom-pass">
             <input type="hidden" name="confirm" value="YES IMPORT DATA">
             <?= redfox_csrf_field() ?>
         </form>
@@ -665,8 +705,18 @@ function filterAgents() {
     document.querySelectorAll('.agent-card').forEach(el => { el.style.display = el.dataset.search.includes(q) ? '' : 'none'; });
 }
 
+function getCustomCreds() {
+    const h = document.getElementById('custom-host').value.trim();
+    const u = document.getElementById('custom-user').value.trim();
+    const p = document.getElementById('custom-pass').value;
+    let qs = '';
+    if (h) qs += '&host=' + encodeURIComponent(h);
+    if (u) qs += '&user=' + encodeURIComponent(u);
+    if (p) qs += '&pass=' + encodeURIComponent(p);
+    return qs;
+}
+
 function onManualInput() {
-    // وقتی کاربر در فیلد دستی تایپ می‌کند، انتخاب لیست را پاک کن
     const val = document.getElementById('manual-db-name').value.trim();
     if (val) {
         document.querySelectorAll('.db-item').forEach(e => e.classList.remove('selected'));
@@ -681,7 +731,7 @@ async function testManualDb() {
     if (!db) { document.getElementById('manual-db-status').innerHTML = '<span style="color:var(--rx-orange)">نام دیتابیس را وارد کنید</span>'; return; }
     document.getElementById('manual-db-status').innerHTML = '<div class="rx-spinner"></div> در حال تست...';
     try {
-        const d = await fetchJSON('db_migrator.php?ajax=test_db&db=' + encodeURIComponent(db));
+        const d = await fetchJSON('db_migrator.php?ajax=test_db&db=' + encodeURIComponent(db) + getCustomCreds());
         if (d.ok) {
             document.getElementById('manual-db-status').innerHTML = '<span style="color:var(--rx-green)">✅ اتصال موفق — ' + d.tables + ' جدول یافت شد</span>';
             selectedDb = db;
@@ -694,6 +744,12 @@ async function testManualDb() {
     }
 }
 
+async function refreshDbList() {
+    document.getElementById('db-loading').style.display = 'block';
+    document.getElementById('db-list-wrap').style.display = 'none';
+    await loadDatabases();
+}
+
 async function fetchJSON(url) {
     const r = await fetch(url, {credentials:'same-origin'});
     const text = await r.text();
@@ -703,7 +759,7 @@ async function fetchJSON(url) {
 
 async function loadDatabases() {
     try {
-        const d = await fetchJSON('db_migrator.php?ajax=list_dbs');
+        const d = await fetchJSON('db_migrator.php?ajax=list_dbs' + getCustomCreds());
         document.getElementById('db-loading').style.display = 'none';
         if (!d.ok) { showErr('db-error', d.error); return; }
         if (!d.dbs || d.dbs.length === 0) { showErr('db-error', 'هیچ دیتابیسی یافت نشد.'); return; }
@@ -756,7 +812,7 @@ async function goStep2() {
     document.getElementById('analyze-error').style.display = 'none';
     setActiveStep(2);
     try {
-        const d = await fetchJSON('db_migrator.php?ajax=analyze_db&db=' + encodeURIComponent(selectedDb));
+        const d = await fetchJSON('db_migrator.php?ajax=analyze_db&db=' + encodeURIComponent(selectedDb) + getCustomCreds());
         document.getElementById('analyze-loading').style.display = 'none';
         if (!d.ok) { showErr('analyze-error', d.error); return; }
         document.getElementById('total-tables').textContent = d.total_tables;
@@ -822,7 +878,7 @@ async function goStep4() {
     document.getElementById('preview-error').style.display = 'none';
     setActiveStep(4);
     try {
-        let url = 'db_migrator.php?ajax=preview_import&db=' + encodeURIComponent(selectedDb) + '&mode=' + migrationMode;
+        let url = 'db_migrator.php?ajax=preview_import&db=' + encodeURIComponent(selectedDb) + '&mode=' + migrationMode + getCustomCreds();
         if (migrationMode === 'agent' && selectedAgentId) url += '&agent_id=' + selectedAgentId;
         const d = await fetchJSON(url);
         document.getElementById('preview-loading').style.display = 'none';
@@ -850,6 +906,9 @@ function goStep5() {
     document.getElementById('exec-mode').value = migrationMode;
     document.getElementById('exec-db').value = selectedDb;
     document.getElementById('exec-agent').value = selectedAgentId;
+    document.getElementById('exec-custom-host').value = document.getElementById('custom-host').value.trim();
+    document.getElementById('exec-custom-user').value = document.getElementById('custom-user').value.trim();
+    document.getElementById('exec-custom-pass').value = document.getElementById('custom-pass').value;
     document.getElementById('exec-form').style.display = 'none';
     document.getElementById('exec-loading').style.display = 'block';
     setTimeout(() => { document.getElementById('exec-form').submit(); }, 500);
