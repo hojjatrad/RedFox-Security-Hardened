@@ -11,6 +11,7 @@
  *   6) اجرای import و نمایش نتیجه
  */
 declare(strict_types=1);
+ob_start();
 
 if (!defined('REDFOX_SKIP_BOTAPI_ROUTER')) define('REDFOX_SKIP_BOTAPI_ROUTER', true);
 require_once __DIR__ . '/../lib/Security.php';
@@ -19,12 +20,38 @@ redfox_security_headers();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/lib/icons.php';
 
-// ── Auth ──
-$stmt = $pdo->prepare('SELECT * FROM admin WHERE username=? LIMIT 1');
-$stmt->execute([(string)($_SESSION['user'] ?? '')]);
-$admin = $stmt->fetch(PDO::FETCH_ASSOC);
-if (!$admin) { header('Location: login.php'); exit; }
-if (($admin['rule'] ?? '') !== 'administrator') { http_response_code(403); exit; }
+// ── Auth (skip for AJAX to avoid redirect issues) ──
+if (!isset($_GET['ajax'])) {
+    if (!isset($pdo) || !($pdo instanceof PDO)) {
+        http_response_code(503);
+        exit('Database not available');
+    }
+    $stmt = $pdo->prepare('SELECT * FROM admin WHERE username=? LIMIT 1');
+    $stmt->execute([(string)($_SESSION['user'] ?? '')]);
+    $admin = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$admin) { header('Location: login.php'); exit; }
+    if (($admin['rule'] ?? '') !== 'administrator') { http_response_code(403); exit; }
+} else {
+    // AJAX: still verify session but don't redirect
+    if (!isset($pdo) || !($pdo instanceof PDO)) {
+        header('Content-Type: application/json; charset=utf-8');
+        ob_end_flush();
+        echo json_encode(['ok'=>false,'error'=>'دیتابیس در دسترس نیست']);
+        exit;
+    }
+    if (empty($_SESSION['user'])) {
+        header('Content-Type: application/json; charset=utf-8');
+        ob_end_flush();
+        echo json_encode(['ok'=>false,'error'=>'جلسه منقضی شده — لطفاً صفحه را رفرش کنید']);
+        exit;
+    }
+}
+
+// ── Get DB credentials from globals (set by config.php) ──
+$_dbhost = (string)($GLOBALS['dbhost'] ?? 'localhost');
+$_dbuser = (string)($GLOBALS['usernamedb'] ?? '');
+$_dbpass = (string)($GLOBALS['passworddb'] ?? '');
+$_dbname = (string)($GLOBALS['dbname'] ?? '');
 
 // ── Helpers ──
 function mz_h(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); }
@@ -80,203 +107,181 @@ function mz_rows_to_sql(PDO $pdo, string $table, array $rows): string {
 }
 
 // ── AJAX handler ──
-$ajaxResponse = null;
 if (isset($_GET['ajax'])) {
+    // Clean any buffered output and send pure JSON
+    ob_end_clean();
     header('Content-Type: application/json; charset=utf-8');
-    $action = $_GET['ajax'];
+    $action = (string)$_GET['ajax'];
 
-    if ($action === 'list_dbs') {
-        $dbhost = (string)(rx_env('REDFOX_DB_HOST') ?: 'localhost');
-        $dbuser = (string)(rx_env('REDFOX_DB_USER') ?: '');
-        $dbpass = (string)(rx_env('REDFOX_DB_PASSWORD') ?: '');
-        $tmp = mz_connect_db($dbhost, $dbuser, $dbpass, 'information_schema');
-        if (!$tmp) { echo json_encode(['ok'=>false,'error'=>'اتصال به MySQL ناموفق']); exit; }
-        $dbs = mz_list_databases($tmp);
-        $current = (string)(rx_env('REDFOX_DB_NAME') ?: '');
-        echo json_encode(['ok'=>true,'dbs'=>$dbs,'current'=>$current]);
-        exit;
-    }
+    try {
+        if ($action === 'list_dbs') {
+            // Use the SAME connection credentials that config.php already resolved
+            $tmp = mz_connect_db($_dbhost, $_dbuser, $_dbpass, 'information_schema');
+            if (!$tmp) {
+                echo json_encode(['ok'=>false,'error'=>'اتصال به MySQL ناموفق. میزبان: '.$_dbhost.' کاربر: '.$_dbuser]);
+                exit;
+            }
+            $dbs = mz_list_databases($tmp);
+            echo json_encode(['ok'=>true,'dbs'=>array_values($dbs),'current'=>$_dbname]);
+            exit;
+        }
 
-    if ($action === 'analyze_db') {
-        $src = (string)($_GET['db'] ?? '');
-        if ($src === '' || !preg_match('/^[A-Za-z0-9_]+$/', $src)) { echo json_encode(['ok'=>false,'error'=>'نام دیتابیس نامعتبر']); exit; }
-        $dbhost = (string)(rx_env('REDFOX_DB_HOST') ?: 'localhost');
-        $dbuser = (string)(rx_env('REDFOX_DB_USER') ?: '');
-        $dbpass = (string)(rx_env('REDFOX_DB_PASSWORD') ?: '');
-        $srcPdo = mz_connect_db($dbhost, $dbuser, $dbpass, $src);
-        if (!$srcPdo) { echo json_encode(['ok'=>false,'error'=>'اتصال به دیتابیس ناموفق']); exit; }
+        if ($action === 'analyze_db') {
+            $src = (string)($_GET['db'] ?? '');
+            if ($src === '' || !preg_match('/^[A-Za-z0-9_]+$/', $src)) {
+                echo json_encode(['ok'=>false,'error'=>'نام دیتابیس نامعتبر']); exit;
+            }
+            $srcPdo = mz_connect_db($_dbhost, $_dbuser, $_dbpass, $src);
+            if (!$srcPdo) {
+                echo json_encode(['ok'=>false,'error'=>'اتصال به دیتابیس `'.$src.'` ناموفق']); exit;
+            }
 
-        $tables = [];
-        $important = ['user','invoice','Payment_report','Requestagent','botsaz','product','category','setting',
-                       'reseller_cards','reseller_ai_feature','reseller_categories','reseller_wallet_ledger',
-                       'reseller_audit_log','reseller_broadcasts','reseller_service_operations','reseller_sessions',
-                       'DiscountSell','Discount','cancel_service','service_other','card_number','channels','help'];
-        try {
+            $tables = [];
+            $important = ['user','invoice','Payment_report','Requestagent','botsaz','product','category','setting',
+                           'reseller_cards','reseller_ai_feature','reseller_categories','reseller_wallet_ledger',
+                           'reseller_audit_log','reseller_broadcasts','reseller_service_operations','reseller_sessions',
+                           'DiscountSell','Discount','cancel_service','service_other','card_number','channels','help'];
             $allTables = $srcPdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
             foreach ($allTables as $t) {
                 $cnt = mz_count_rows($srcPdo, $t);
                 $tables[] = ['name'=>$t, 'rows'=>$cnt, 'important'=>in_array($t, $important, true)];
             }
-        } catch (Throwable $e) {
-            echo json_encode(['ok'=>false,'error'=>'خطا در خواندن جداول: '.$e->getMessage()]); exit;
-        }
 
-        // Find agents/resellers
-        $agents = [];
-        $has_agent_col = false;
-        try {
-            $colCheck = $srcPdo->query("SHOW COLUMNS FROM `user` LIKE 'agent'")->fetch();
-            $has_agent_col = $colCheck !== false;
-        } catch (Throwable $e) {}
-
-        if ($has_agent_col) {
+            // Find agents/resellers
+            $agents = [];
+            $has_agent_col = false;
             try {
-                $agentRows = $srcPdo->query("SELECT id, username, namecustom, agent, reseller_role, affiliates, reseller_parent_id FROM user WHERE agent IN ('n','n2') ORDER BY id DESC LIMIT 500")->fetchAll(PDO::FETCH_ASSOC);
-                foreach ($agentRows as $a) {
-                    $aid = (string)$a['id'];
-                    // Count downline
-                    $dlStmt = $srcPdo->prepare("SELECT COUNT(*) FROM user WHERE affiliates = ?");
-                    $dlStmt->execute([$aid]);
-                    $downline = (int)$dlStmt->fetchColumn();
-                    // Count customers via invoice.refral
-                    $custStmt = $srcPdo->prepare("SELECT COUNT(DISTINCT id_user) FROM invoice WHERE refral = ?");
-                    $custStmt->execute([$aid]);
-                    $customers = (int)$custStmt->fetchColumn();
-                    // Count invoices
-                    $invStmt = $srcPdo->prepare("SELECT COUNT(*) FROM invoice WHERE id_user = ? OR refral = ?");
-                    $invStmt->execute([$aid, $aid]);
-                    $invoices = (int)$invStmt->fetchColumn();
-                    // Sum revenue
-                    $revStmt = $srcPdo->prepare("SELECT COALESCE(SUM(CAST(amount AS DECIMAL(20,0))),0) FROM invoice WHERE (id_user = ? OR refral = ?) AND status_pay = 'paid'");
-                    $revStmt->execute([$aid, $aid]);
-                    $revenue = (string)$revStmt->fetchColumn();
-
-                    $agents[] = [
-                        'id' => $aid,
-                        'username' => (string)($a['username'] ?? ''),
-                        'namecustom' => (string)($a['namecustom'] ?? ''),
-                        'agent' => (string)($a['agent'] ?? ''),
-                        'role' => (string)($a['reseller_role'] ?? ''),
-                        'downline' => $downline,
-                        'customers' => $customers,
-                        'invoices' => $invoices,
-                        'revenue' => $revenue,
-                    ];
-                }
+                $colCheck = $srcPdo->query("SHOW COLUMNS FROM `user` LIKE 'agent'")->fetch();
+                $has_agent_col = $colCheck !== false;
             } catch (Throwable $e) {}
+
+            if ($has_agent_col) {
+                try {
+                    $agentRows = $srcPdo->query("SELECT id, username, namecustom, agent, reseller_role, affiliates, reseller_parent_id FROM user WHERE agent IN ('n','n2') ORDER BY id DESC LIMIT 500")->fetchAll(PDO::FETCH_ASSOC);
+                    foreach ($agentRows as $a) {
+                        $aid = (string)$a['id'];
+                        $dlStmt = $srcPdo->prepare("SELECT COUNT(*) FROM user WHERE affiliates = ?");
+                        $dlStmt->execute([$aid]);
+                        $downline = (int)$dlStmt->fetchColumn();
+
+                        $custStmt = $srcPdo->prepare("SELECT COUNT(DISTINCT id_user) FROM invoice WHERE refral = ?");
+                        $custStmt->execute([$aid]);
+                        $customers = (int)$custStmt->fetchColumn();
+
+                        $invStmt = $srcPdo->prepare("SELECT COUNT(*) FROM invoice WHERE id_user = ? OR refral = ?");
+                        $invStmt->execute([$aid, $aid]);
+                        $invoices = (int)$invStmt->fetchColumn();
+
+                        $revStmt = $srcPdo->prepare("SELECT COALESCE(SUM(CAST(amount AS DECIMAL(20,0))),0) FROM invoice WHERE (id_user = ? OR refral = ?) AND status_pay = 'paid'");
+                        $revStmt->execute([$aid, $aid]);
+                        $revenue = (string)$revStmt->fetchColumn();
+
+                        $agents[] = [
+                            'id' => $aid,
+                            'username' => (string)($a['username'] ?? ''),
+                            'namecustom' => (string)($a['namecustom'] ?? ''),
+                            'agent' => (string)($a['agent'] ?? ''),
+                            'role' => (string)($a['reseller_role'] ?? ''),
+                            'downline' => $downline,
+                            'customers' => $customers,
+                            'invoices' => $invoices,
+                            'revenue' => $revenue,
+                        ];
+                    }
+                } catch (Throwable $e) {}
+            }
+
+            echo json_encode(['ok'=>true, 'tables'=>$tables, 'agents'=>$agents, 'has_agent_col'=>$has_agent_col, 'total_tables'=>count($tables)]);
+            exit;
         }
 
-        echo json_encode(['ok'=>true, 'tables'=>$tables, 'agents'=>$agents, 'has_agent_col'=>$has_agent_col, 'total_tables'=>count($tables)]);
-        exit;
-    }
+        if ($action === 'preview_import') {
+            $mode = (string)($_GET['mode'] ?? '');
+            $src = (string)($_GET['db'] ?? '');
+            $agentId = (string)($_GET['agent_id'] ?? '');
+            if ($src === '' || !preg_match('/^[A-Za-z0-9_]+$/', $src)) {
+                echo json_encode(['ok'=>false,'error'=>'نام دیتابیس نامعتبر']); exit;
+            }
+            $srcPdo = mz_connect_db($_dbhost, $_dbuser, $_dbpass, $src);
+            if (!$srcPdo) {
+                echo json_encode(['ok'=>false,'error'=>'اتصال ناموفق']); exit;
+            }
 
-    if ($action === 'preview_import') {
-        $mode = (string)($_GET['mode'] ?? '');
-        $src = (string)($_GET['db'] ?? '');
-        $agentId = (string)($_GET['agent_id'] ?? '');
-        if ($src === '' || !preg_match('/^[A-Za-z0-9_]+$/', $src)) { echo json_encode(['ok'=>false,'error'=>'نام دیتابیس نامعتبر']); exit; }
+            $preview = [];
+            $idsCount = 0;
 
-        $dbhost = (string)(rx_env('REDFOX_DB_HOST') ?: 'localhost');
-        $dbuser = (string)(rx_env('REDFOX_DB_USER') ?: '');
-        $dbpass = (string)(rx_env('REDFOX_DB_PASSWORD') ?: '');
-        $srcPdo = mz_connect_db($dbhost, $dbuser, $dbpass, $src);
-        if (!$srcPdo) { echo json_encode(['ok'=>false,'error'=>'اتصال ناموفق']); exit; }
+            if ($mode === 'agent' && $agentId !== '') {
+                $ids = [$agentId];
+                $dl = $srcPdo->prepare("SELECT id FROM user WHERE affiliates = ?"); $dl->execute([$agentId]);
+                foreach ($dl->fetchAll(PDO::FETCH_COLUMN) as $d) $ids[] = (string)$d;
+                $ci = $srcPdo->prepare("SELECT DISTINCT id_user FROM invoice WHERE refral = ? AND id_user IS NOT NULL AND id_user <> ''");
+                $ci->execute([$agentId]);
+                foreach ($ci->fetchAll(PDO::FETCH_COLUMN) as $c) $ids[] = (string)$c;
+                $ids = array_values(array_unique(array_filter($ids)));
+                $idsCount = count($ids);
+                $ph = implode(',', array_fill(0, count($ids), '?'));
 
-        $preview = [];
-        $totalRows = 0;
+                $uStmt = $srcPdo->prepare("SELECT COUNT(*) FROM user WHERE id IN ($ph)");
+                $uStmt->execute($ids); $preview['user'] = (int)$uStmt->fetchColumn();
 
-        if ($mode === 'agent' && $agentId !== '') {
-            // Agent bundle: self + downline + customers + invoices + payments + reseller-related tables
-            $ids = [$agentId];
-            // Downline
-            $dl = $srcPdo->prepare("SELECT id FROM user WHERE affiliates = ?"); $dl->execute([$agentId]);
-            foreach ($dl->fetchAll(PDO::FETCH_COLUMN) as $d) $ids[] = (string)$d;
-            // Customers from invoices
-            $ci = $srcPdo->prepare("SELECT DISTINCT id_user FROM invoice WHERE refral = ? AND id_user IS NOT NULL AND id_user <> ''");
-            $ci->execute([$agentId]);
-            foreach ($ci->fetchAll(PDO::FETCH_COLUMN) as $c) $ids[] = (string)$c;
-            $ids = array_values(array_unique(array_filter($ids)));
-            $ph = implode(',', array_fill(0, count($ids), '?'));
+                foreach (['Requestagent','Payment_report','botsaz'] as $tbl) {
+                    if (!mz_table_exists($srcPdo, $tbl)) continue;
+                    if ($tbl === 'Requestagent') {
+                        $s = $srcPdo->prepare("SELECT COUNT(*) FROM `$tbl` WHERE id = ?"); $s->execute([$agentId]);
+                    } else {
+                        $s = $srcPdo->prepare("SELECT COUNT(*) FROM `$tbl` WHERE id_user IN ($ph)"); $s->execute($ids);
+                    }
+                    $preview[$tbl] = (int)$s->fetchColumn();
+                }
 
-            // user rows
-            $uStmt = $srcPdo->prepare("SELECT COUNT(*) FROM user WHERE id IN ($ph)");
-            $uStmt->execute($ids); $preview['user'] = (int)$uStmt->fetchColumn();
-            // Requestagent
-            if (mz_table_exists($srcPdo, 'Requestagent')) {
-                $raStmt = $srcPdo->prepare("SELECT COUNT(*) FROM Requestagent WHERE id = ?");
-                $raStmt->execute([$agentId]); $preview['Requestagent'] = (int)$raStmt->fetchColumn();
-            }
-            // invoices
-            $invStmt = $srcPdo->prepare("SELECT COUNT(*) FROM invoice WHERE id_user IN ($ph) OR refral = ?");
-            $paramsInv = array_merge($ids, [$agentId]);
-            $invStmt->execute($paramsInv); $preview['invoice'] = (int)$invStmt->fetchColumn();
-            // payments
-            if (mz_table_exists($srcPdo, 'Payment_report')) {
-                $payStmt = $srcPdo->prepare("SELECT COUNT(*) FROM Payment_report WHERE id_user IN ($ph)");
-                $payStmt->execute($ids); $preview['Payment_report'] = (int)$payStmt->fetchColumn();
-            }
-            // botsaz
-            if (mz_table_exists($srcPdo, 'botsaz')) {
-                $bsStmt = $srcPdo->prepare("SELECT COUNT(*) FROM botsaz WHERE id_user IN ($ph)");
-                $bsStmt->execute($ids); $preview['botsaz'] = (int)$bsStmt->fetchColumn();
-            }
-            // reseller_cards
-            if (mz_table_exists($srcPdo, 'reseller_cards')) {
-                $rcStmt = $srcPdo->prepare("SELECT COUNT(*) FROM reseller_cards WHERE reseller_id = ?");
-                $rcStmt->execute([$agentId]); $preview['reseller_cards'] = (int)$rcStmt->fetchColumn();
-            }
-            // reseller_ai_feature
-            if (mz_table_exists($srcPdo, 'reseller_ai_feature')) {
-                $raStmt = $srcPdo->prepare("SELECT COUNT(*) FROM reseller_ai_feature WHERE reseller_id = ?");
-                $raStmt->execute([$agentId]); $preview['reseller_ai_feature'] = (int)$raStmt->fetchColumn();
-            }
-            // reseller_categories
-            if (mz_table_exists($srcPdo, 'reseller_categories')) {
-                $rcStmt = $srcPdo->prepare("SELECT COUNT(*) FROM reseller_categories WHERE reseller_id = ?");
-                $rcStmt->execute([$agentId]); $preview['reseller_categories'] = (int)$rcStmt->fetchColumn();
-            }
-            // reseller_wallet_ledger
-            if (mz_table_exists($srcPdo, 'reseller_wallet_ledger')) {
-                $wlStmt = $srcPdo->prepare("SELECT COUNT(*) FROM reseller_wallet_ledger WHERE actor_reseller_id = ?");
-                $wlStmt->execute([$agentId]); $preview['reseller_wallet_ledger'] = (int)$wlStmt->fetchColumn();
-            }
-            // reseller_audit_log
-            if (mz_table_exists($srcPdo, 'reseller_audit_log')) {
-                $alStmt = $srcPdo->prepare("SELECT COUNT(*) FROM reseller_audit_log WHERE reseller_id = ?");
-                $alStmt->execute([$agentId]); $preview['reseller_audit_log'] = (int)$alStmt->fetchColumn();
-            }
-            // DiscountSell
-            if (mz_table_exists($srcPdo, 'DiscountSell')) {
-                $dsStmt = $srcPdo->prepare("SELECT COUNT(*) FROM DiscountSell WHERE id_user IN ($ph)");
-                $dsStmt->execute($ids); $preview['DiscountSell'] = (int)$dsStmt->fetchColumn();
-            }
-            // service_other / cancel_service
-            foreach (['service_other','cancel_service'] as $sot) {
-                if (mz_table_exists($srcPdo, $sot)) {
+                $invStmt = $srcPdo->prepare("SELECT COUNT(*) FROM invoice WHERE id_user IN ($ph) OR refral = ?");
+                $invStmt->execute(array_merge($ids, [$agentId]));
+                $preview['invoice'] = (int)$invStmt->fetchColumn();
+
+                foreach (['reseller_cards','reseller_ai_feature','reseller_categories'] as $tbl) {
+                    if (!mz_table_exists($srcPdo, $tbl)) continue;
+                    $s = $srcPdo->prepare("SELECT COUNT(*) FROM `$tbl` WHERE reseller_id = ?"); $s->execute([$agentId]);
+                    $preview[$tbl] = (int)$s->fetchColumn();
+                }
+
+                foreach (['reseller_wallet_ledger','reseller_audit_log'] as $tbl) {
+                    if (!mz_table_exists($srcPdo, $tbl)) continue;
+                    $col = ($tbl === 'reseller_wallet_ledger') ? 'actor_reseller_id' : 'reseller_id';
+                    $s = $srcPdo->prepare("SELECT COUNT(*) FROM `$tbl` WHERE `$col` = ?"); $s->execute([$agentId]);
+                    $preview[$tbl] = (int)$s->fetchColumn();
+                }
+
+                foreach (['DiscountSell','service_other','cancel_service'] as $tbl) {
+                    if (!mz_table_exists($srcPdo, $tbl)) continue;
                     try {
-                        $soStmt = $srcPdo->prepare("SELECT COUNT(*) FROM `$sot` WHERE id_user IN ($ph)");
-                        $soStmt->execute($ids); $preview[$sot] = (int)$soStmt->fetchColumn();
+                        $s = $srcPdo->prepare("SELECT COUNT(*) FROM `$tbl` WHERE id_user IN ($ph)"); $s->execute($ids);
+                        $preview[$tbl] = (int)$s->fetchColumn();
                     } catch (Throwable $e) {}
                 }
-            }
-        } elseif ($mode === 'all') {
-            $important = ['user','invoice','Payment_report','Requestagent','botsaz','product','category','setting',
-                           'reseller_cards','reseller_ai_feature','reseller_categories','reseller_wallet_ledger',
-                           'reseller_audit_log','DiscountSell','Discount','cancel_service','service_other',
-                           'card_number','channels','help','textbot','departman','shopSetting','PaySetting'];
-            foreach ($important as $t) {
-                if (mz_table_exists($srcPdo, $t)) {
-                    $preview[$t] = mz_count_rows($srcPdo, $t);
+            } elseif ($mode === 'all') {
+                $important = ['user','invoice','Payment_report','Requestagent','botsaz','product','category','setting',
+                               'reseller_cards','reseller_ai_feature','reseller_categories','reseller_wallet_ledger',
+                               'reseller_audit_log','DiscountSell','Discount','cancel_service','service_other',
+                               'card_number','channels','help','textbot','departman','shopSetting','PaySetting'];
+                foreach ($important as $t) {
+                    if (mz_table_exists($srcPdo, $t)) {
+                        $preview[$t] = mz_count_rows($srcPdo, $t);
+                    }
                 }
             }
+
+            $totalRows = array_sum($preview);
+            echo json_encode(['ok'=>true, 'preview'=>$preview, 'total_rows'=>$totalRows, 'ids_count'=>$idsCount]);
+            exit;
         }
 
-        $totalRows = array_sum($preview);
-        echo json_encode(['ok'=>true, 'preview'=>$preview, 'total_rows'=>$totalRows, 'ids_count'=>isset($ids) ? count($ids) : 0]);
+        echo json_encode(['ok'=>false,'error'=>'عملیات نامشخص: '.$action]);
+        exit;
+
+    } catch (Throwable $e) {
+        echo json_encode(['ok'=>false,'error'=>'خطای سرور: '.$e->getMessage()]);
         exit;
     }
-
-    echo json_encode(['ok'=>false,'error'=>'نامشخص']); exit;
 }
 
 // ── POST: Execute import ──
@@ -293,21 +298,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
     } elseif ($src === '' || !preg_match('/^[A-Za-z0-9_]+$/', $src)) {
         $importResult = ['ok'=>false, 'error'=>'نام دیتابیس نامعتبر.'];
     } else {
-        $dbhost = (string)($GLOBALS['dbhost'] ?? 'localhost');
-        $dbuser = (string)($GLOBALS['usernamedb'] ?? '');
-        $dbpass = (string)($GLOBALS['passworddb'] ?? '');
-        $currentDb = (string)($GLOBALS['dbname'] ?? '');
-        $srcPdo = mz_connect_db($dbhost, $dbuser, $dbpass, $src);
+        $srcPdo = mz_connect_db($_dbhost, $_dbuser, $_dbpass, $src);
         if (!$srcPdo) {
             $importResult = ['ok'=>false, 'error'=>'اتصال به دیتابیس مبدأ ناموفق.'];
         } else {
             try {
-                $sql = "-- RedFox+ DB Migrator Import\n-- Source: {$src}\n-- Target: {$currentDb}\n-- Mode: {$mode}\n-- Date: " . date('Y-m-d H:i:s') . "\n-- All statements use INSERT IGNORE\n\n";
                 $imported = [];
                 $errors = [];
 
                 if ($mode === 'agent' && $agentId !== '') {
-                    // Collect IDs
                     $ids = [$agentId];
                     $dl = $srcPdo->prepare("SELECT id FROM user WHERE affiliates = ?"); $dl->execute([$agentId]);
                     foreach ($dl->fetchAll(PDO::FETCH_COLUMN) as $d) $ids[] = (string)$d;
@@ -317,7 +316,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
                     $ids = array_values(array_unique(array_filter($ids)));
                     $ph = implode(',', array_fill(0, count($ids), '?'));
 
-                    // Import tables in order
                     $table_configs = [
                         ['table'=>'user', 'query'=>"SELECT * FROM user WHERE id IN ($ph)", 'params'=>$ids],
                         ['table'=>'Requestagent', 'query'=>"SELECT * FROM Requestagent WHERE id = ?", 'params'=>[$agentId], 'exists'=>true],
@@ -343,13 +341,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
                             $stmt->execute($tc['params']);
                             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             if (!empty($rows)) {
-                                $chunkSize = 100;
-                                $chunks = array_chunk($rows, $chunkSize);
-                                foreach ($chunks as $chunk) {
+                                foreach (array_chunk($rows, 100) as $chunk) {
                                     $sqlChunk = mz_rows_to_sql($srcPdo, $tbl, $chunk);
-                                    if ($sqlChunk !== '') {
-                                        $pdo->exec($sqlChunk);
-                                    }
+                                    if ($sqlChunk !== '') $pdo->exec($sqlChunk);
                                 }
                                 $imported[$tbl] = count($rows);
                             }
@@ -370,8 +364,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
                         try {
                             $rows = $srcPdo->query("SELECT * FROM `{$tbl}`")->fetchAll(PDO::FETCH_ASSOC);
                             if (!empty($rows)) {
-                                $chunks = array_chunk($rows, 100);
-                                foreach ($chunks as $chunk) {
+                                foreach (array_chunk($rows, 100) as $chunk) {
                                     $sqlChunk = mz_rows_to_sql($srcPdo, $tbl, $chunk);
                                     if ($sqlChunk !== '') $pdo->exec($sqlChunk);
                                 }
@@ -444,7 +437,6 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
 .back-link:hover{color:var(--rx-text)}
 .input-field{width:100%;max-width:400px;padding:10px 12px;border-radius:10px;border:2px solid var(--rx-border);background:var(--rx-bg);color:var(--rx-text);font-size:.95em;box-sizing:border-box;direction:ltr}
 .input-field:focus{outline:none;border-color:var(--rx-accent)}
-.input-label{display:block;color:var(--rx-muted);font-size:.85em;margin-bottom:6px}
 .search-box{position:relative;margin-bottom:14px}
 .search-box input{padding-left:36px}
 .search-box::before{content:'🔍';position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:.9em}
@@ -455,7 +447,6 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
 <h1 class="rx-title">🔄 ابزار مهاجرت دیتابیس</h1>
 <p class="rx-sub">مهاجرت انتخابی نماینده، زیرمجموعه‌ها و تاریخچه مالی از دیتابیس‌های دیگر روی همین سرور</p>
 
-<!-- Steps -->
 <div class="rx-step">
     <div class="rx-step-item" id="step-ind-1"><div class="rx-step-num">۱</div><div class="rx-step-label">انتخاب دیتابیس</div></div>
     <div class="rx-step-item" id="step-ind-2"><div class="rx-step-num">۲</div><div class="rx-step-label">تحلیل و بررسی</div></div>
@@ -464,10 +455,10 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
     <div class="rx-step-item" id="step-ind-5"><div class="rx-step-num">۵</div><div class="rx-step-label">اجرای مهاجرت</div></div>
 </div>
 
-<!-- STEP 1: Database selection -->
 <div class="rx-card" id="step1">
     <h2>🗄️ مرحله ۱: انتخاب دیتابیس مبدأ</h2>
     <div id="db-loading" style="text-align:center;padding:30px"><div class="rx-spinner"></div><br><br>در حال جستجوی دیتابیس‌ها...</div>
+    <div id="db-error" style="display:none"></div>
     <div id="db-list-wrap" style="display:none">
         <div class="search-box"><input type="text" id="db-search" placeholder="جستجوی نام دیتابیس..." class="input-field" oninput="filterDbs()"></div>
         <div class="db-list" id="db-list"></div>
@@ -475,10 +466,10 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
     </div>
 </div>
 
-<!-- STEP 2: Analysis -->
 <div class="rx-card" id="step2" style="display:none">
     <h2>📊 مرحله ۲: تحلیل دیتابیس <span id="src-db-name" style="color:var(--rx-accent)"></span></h2>
     <div id="analyze-loading" style="text-align:center;padding:30px"><div class="rx-spinner"></div><br><br>در حال تحلیل جداول و نماینده‌ها...</div>
+    <div id="analyze-error" style="display:none"></div>
     <div id="analyze-result" style="display:none">
         <h3 style="margin:0 0 10px;color:var(--rx-muted);font-size:.9em">📋 جداول دیتابیس (<span id="total-tables"></span> جدول)</h3>
         <div class="table-grid" id="table-grid"></div>
@@ -488,13 +479,12 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
         </div>
         <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
             <button class="rx-btn rx-btn-primary" id="btn-select-agent" disabled onclick="goStep3('agent')">👤 انتخاب نماینده خاص</button>
-            <button class="rx-btn rx-btn-orange" onclick="goStep3('all')">📦 مهاجرت همه (کاربران + فروش + تنظیمات)</button>
+            <button class="rx-btn rx-btn-orange" onclick="goStep3('all')">📦 مهاجرت همه</button>
             <button class="rx-btn rx-btn-ghost" onclick="goStep1()">← بازگشت</button>
         </div>
     </div>
 </div>
 
-<!-- STEP 3: Agent selection (if mode=agent) -->
 <div class="rx-card" id="step3" style="display:none">
     <h2>👤 مرحله ۳: انتخاب نماینده</h2>
     <div class="search-box"><input type="text" id="agent-search" placeholder="جستجوی نام کاربری یا شناسه..." class="input-field" oninput="filterAgents()"></div>
@@ -505,14 +495,14 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
     </div>
 </div>
 
-<!-- STEP 4: Preview -->
 <div class="rx-card" id="step4" style="display:none">
     <h2>👁️ مرحله ۴: پیش‌نمایش مهاجرت</h2>
     <div id="preview-loading" style="text-align:center;padding:30px"><div class="rx-spinner"></div><br><br>در حال محاسبه...</div>
+    <div id="preview-error" style="display:none"></div>
     <div id="preview-result" style="display:none">
         <div class="rx-alert info" id="preview-summary"></div>
         <div class="preview-grid" id="preview-grid"></div>
-        <div class="rx-alert warn" style="margin-top:16px">⚠️ توجه: دستورات <code>INSERT IGNORE</code> استفاده می‌شوند — رکوردهای موجود (با همان کلید اصلی) بازنویسی نمی‌شوند. فقط رکوردهای جدید اضافه می‌شوند.</div>
+        <div class="rx-alert warn" style="margin-top:16px">⚠️ توجه: دستورات <code>INSERT IGNORE</code> استفاده می‌شوند — رکوردهای موجود بازنویسی نمی‌شوند.</div>
         <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
             <button class="rx-btn rx-btn-green" onclick="goStep5()">✅ تأیید و اجرای مهاجرت</button>
             <button class="rx-btn rx-btn-ghost" onclick="goStep3Back()">← بازگشت</button>
@@ -520,13 +510,11 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
     </div>
 </div>
 
-<!-- STEP 5: Execute -->
 <div class="rx-card" id="step5" style="display:none">
     <h2>🚀 مرحله ۵: اجرای مهاجرت</h2>
     <?php if ($importResult): ?>
         <?php if ($importResult['ok']): ?>
             <div class="rx-alert success">✅ مهاجرت با موفقیت انجام شد!</div>
-            <h3 style="color:var(--rx-muted);font-size:.9em;margin-top:14px">📊 نتیجه:</h3>
             <table class="result-table">
                 <tr><th>جدول</th><th>رکوردهای import شده</th></tr>
                 <?php foreach ($importResult['imported'] as $tbl => $cnt): ?>
@@ -543,7 +531,7 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
             <div style="margin-top:16px"><a class="rx-btn rx-btn-ghost" href="db_migrator.php">🔄 تلاش مجدد</a></div>
         <?php endif; ?>
     <?php else: ?>
-        <div id="exec-loading" style="text-align:center;padding:30px"><div class="rx-spinner"></div><br><br>در حال اجرای مهاجرت... لطفاً صبر کنید.</div>
+        <div id="exec-loading" style="text-align:center;padding:30px"><div class="rx-spinner"></div><br><br>در حال اجرای مهاجرت...</div>
         <form method="post" id="exec-form" style="display:none">
             <input type="hidden" name="action" value="execute_import">
             <input type="hidden" name="mode" id="exec-mode">
@@ -552,9 +540,6 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
             <input type="hidden" name="confirm" value="YES IMPORT DATA">
             <?= redfox_csrf_field() ?>
         </form>
-        <script>
-        // Will be triggered by goStep5()
-        </script>
     <?php endif; ?>
 </div>
 
@@ -562,10 +547,9 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
 const CSRF = '<?= mz_h(redfox_csrf_token()) ?>';
 let selectedDb = '';
 let selectedAgentId = '';
-let migrationMode = ''; // 'agent' or 'all'
+let migrationMode = '';
 let allDbs = [];
 let allAgents = [];
-let analysisData = null;
 
 function setActiveStep(n) {
     for (let i = 1; i <= 5; i++) {
@@ -574,27 +558,34 @@ function setActiveStep(n) {
     }
 }
 
+function showErr(id, msg) {
+    const el = document.getElementById(id);
+    if (el) { el.innerHTML = '<div class="rx-alert error">❌ ' + msg + '</div>'; el.style.display = 'block'; }
+}
+
 function filterDbs() {
     const q = document.getElementById('db-search').value.toLowerCase();
-    document.querySelectorAll('.db-item').forEach(el => {
-        el.style.display = el.dataset.name.includes(q) ? '' : 'none';
-    });
+    document.querySelectorAll('.db-item').forEach(el => { el.style.display = el.dataset.name.includes(q) ? '' : 'none'; });
 }
 
 function filterAgents() {
     const q = document.getElementById('agent-search').value.toLowerCase();
-    document.querySelectorAll('.agent-card').forEach(el => {
-        el.style.display = (el.dataset.search.includes(q)) ? '' : 'none';
-    });
+    document.querySelectorAll('.agent-card').forEach(el => { el.style.display = el.dataset.search.includes(q) ? '' : 'none'; });
 }
 
-// STEP 1: Load databases
+async function fetchJSON(url) {
+    const r = await fetch(url, {credentials:'same-origin'});
+    const text = await r.text();
+    try { return JSON.parse(text); }
+    catch(e) { return {ok:false, error:'پاسخ سرور نامعتبر است. ممکن است جلسه منقضی شده باشد — صفحه را رفرش کنید.\n\n'+text.substring(0,200)}; }
+}
+
 async function loadDatabases() {
     try {
-        const r = await fetch('db_migrator.php?ajax=list_dbs');
-        const d = await r.json();
+        const d = await fetchJSON('db_migrator.php?ajax=list_dbs');
         document.getElementById('db-loading').style.display = 'none';
-        if (!d.ok) { document.getElementById('db-list-wrap').innerHTML = '<div class="rx-alert error">' + d.error + '</div>'; return; }
+        if (!d.ok) { showErr('db-error', d.error); return; }
+        if (!d.dbs || d.dbs.length === 0) { showErr('db-error', 'هیچ دیتابیسی یافت نشد.'); return; }
         allDbs = d.dbs;
         const list = document.getElementById('db-list');
         list.innerHTML = '';
@@ -616,7 +607,7 @@ async function loadDatabases() {
         });
         document.getElementById('db-list-wrap').style.display = 'block';
     } catch (e) {
-        document.getElementById('db-loading').innerHTML = '<div class="rx-alert error">خطا: ' + e.message + '</div>';
+        document.getElementById('db-loading').innerHTML = '<div class="rx-alert error">خطای شبکه: ' + e.message + '<br>لطفاً صفحه را رفرش کنید.</div>';
     }
 }
 
@@ -626,7 +617,6 @@ function goStep1() {
     setActiveStep(1);
 }
 
-// STEP 2: Analyze selected database
 async function goStep2() {
     if (!selectedDb) return;
     document.getElementById('step2').style.display = 'block';
@@ -634,16 +624,12 @@ async function goStep2() {
     document.getElementById('src-db-name').textContent = selectedDb;
     document.getElementById('analyze-loading').style.display = 'block';
     document.getElementById('analyze-result').style.display = 'none';
+    document.getElementById('analyze-error').style.display = 'none';
     setActiveStep(2);
-
     try {
-        const r = await fetch('db_migrator.php?ajax=analyze_db&db=' + encodeURIComponent(selectedDb));
-        const d = await r.json();
+        const d = await fetchJSON('db_migrator.php?ajax=analyze_db&db=' + encodeURIComponent(selectedDb));
         document.getElementById('analyze-loading').style.display = 'none';
-        if (!d.ok) { document.getElementById('analyze-result').innerHTML = '<div class="rx-alert error">' + d.error + '</div>'; document.getElementById('analyze-result').style.display = 'block'; return; }
-        analysisData = d;
-
-        // Tables
+        if (!d.ok) { showErr('analyze-error', d.error); return; }
         document.getElementById('total-tables').textContent = d.total_tables;
         const grid = document.getElementById('table-grid');
         grid.innerHTML = '';
@@ -653,10 +639,8 @@ async function goStep2() {
             el.innerHTML = '<span class="table-name' + (t.important ? '" style="color:var(--rx-green)' : '') + '">' + t.name + '</span><span class="table-rows">' + t.rows.toLocaleString('fa') + '</span>';
             grid.appendChild(el);
         });
-
-        // Agents
         const agentsDiv = document.getElementById('agents-section');
-        if (d.agents.length > 0) {
+        if (d.agents && d.agents.length > 0) {
             agentsDiv.style.display = 'block';
             allAgents = d.agents;
             const list = document.getElementById('agents-list');
@@ -664,162 +648,81 @@ async function goStep2() {
             d.agents.forEach(a => {
                 const el = document.createElement('div');
                 el.className = 'agent-card';
-                el.dataset.id = a.id;
                 el.dataset.search = (a.id + ' ' + a.username + ' ' + a.namecustom).toLowerCase();
-                el.innerHTML = `
-                    <div class="agent-head">
-                        <span class="agent-badge ${a.agent}">${a.agent === 'n2' ? 'پیشرفته' : 'عادی'}</span>
-                        <b>#${a.id}</b> — ${a.username || a.namecustom || 'بدون نام'} ${a.role ? '(' + a.role + ')' : ''}
-                    </div>
-                    <div class="agent-stats">
-                        <div class="agent-stat"><div class="agent-stat-val">${a.downline}</div><div class="agent-stat-lbl">زیرمجموعه</div></div>
-                        <div class="agent-stat"><div class="agent-stat-val">${a.customers}</div><div class="agent-stat-lbl">مشتری</div></div>
-                        <div class="agent-stat"><div class="agent-stat-val">${a.invoices}</div><div class="agent-stat-lbl">فاکتور</div></div>
-                        <div class="agent-stat"><div class="agent-stat-val">${parseInt(a.revenue || 0).toLocaleString('fa')}</div><div class="agent-stat-lbl">درآمد (تومان)</div></div>
-                    </div>
-                `;
-                el.onclick = () => {
-                    document.querySelectorAll('.agent-card').forEach(e => e.classList.remove('selected'));
-                    el.classList.add('selected');
-                    selectedAgentId = a.id;
-                    document.getElementById('btn-select-agent').disabled = false;
-                };
+                el.innerHTML = '<div class="agent-head"><span class="agent-badge ' + a.agent + '">' + (a.agent === 'n2' ? 'پیشرفته' : 'عادی') + '</span><b>#' + a.id + '</b> — ' + (a.username || a.namecustom || 'بدون نام') + (a.role ? ' (' + a.role + ')' : '') + '</div><div class="agent-stats"><div class="agent-stat"><div class="agent-stat-val">' + a.downline + '</div><div class="agent-stat-lbl">زیرمجموعه</div></div><div class="agent-stat"><div class="agent-stat-val">' + a.customers + '</div><div class="agent-stat-lbl">مشتری</div></div><div class="agent-stat"><div class="agent-stat-val">' + a.invoices + '</div><div class="agent-stat-lbl">فاکتور</div></div><div class="agent-stat"><div class="agent-stat-val">' + parseInt(a.revenue||0).toLocaleString('fa') + '</div><div class="agent-stat-lbl">درآمد</div></div></div>';
+                el.onclick = () => { document.querySelectorAll('.agent-card').forEach(e => e.classList.remove('selected')); el.classList.add('selected'); selectedAgentId = a.id; document.getElementById('btn-select-agent').disabled = false; };
                 list.appendChild(el);
             });
-        } else {
-            agentsDiv.style.display = 'none';
-        }
-
+        } else { agentsDiv.style.display = 'none'; }
         document.getElementById('analyze-result').style.display = 'block';
     } catch (e) {
         document.getElementById('analyze-loading').innerHTML = '<div class="rx-alert error">خطا: ' + e.message + '</div>';
     }
 }
 
-function goStep2Back() {
-    document.getElementById('step3').style.display = 'none';
-    document.getElementById('step2').style.display = 'block';
-    document.getElementById('step2').scrollIntoView({behavior:'smooth'});
-    setActiveStep(2);
-}
+function goStep2Back() { document.getElementById('step3').style.display = 'none'; document.getElementById('step2').style.display = 'block'; setActiveStep(2); }
 
-// STEP 3: Agent selection (only for mode=agent)
 function goStep3(mode) {
     migrationMode = mode;
-    if (mode === 'all') {
-        goStep4();
-        return;
-    }
+    if (mode === 'all') { goStep4(); return; }
     document.getElementById('step3').style.display = 'block';
     document.getElementById('step3').scrollIntoView({behavior:'smooth'});
     setActiveStep(3);
-
-    // Populate agent list
     const list = document.getElementById('agent-select-list');
     list.innerHTML = '';
     allAgents.forEach(a => {
         const el = document.createElement('div');
         el.className = 'agent-card';
-        el.dataset.id = a.id;
         el.dataset.search = (a.id + ' ' + a.username + ' ' + a.namecustom).toLowerCase();
-        el.innerHTML = `
-            <div class="agent-head">
-                <input type="radio" name="sel-agent" value="${a.id}" style="margin-left:8px" onchange="selectedAgentId='${a.id}';document.getElementById('btn-preview').disabled=false">
-                <span class="agent-badge ${a.agent}">${a.agent === 'n2' ? 'پیشرفته' : 'عادی'}</span>
-                <b>#${a.id}</b> — ${a.username || a.namecustom || 'بدون نام'}
-            </div>
-            <div class="agent-stats">
-                <div class="agent-stat"><div class="agent-stat-val">${a.downline}</div><div class="agent-stat-lbl">زیرمجموعه</div></div>
-                <div class="agent-stat"><div class="agent-stat-val">${a.customers}</div><div class="agent-stat-lbl">مشتری</div></div>
-                <div class="agent-stat"><div class="agent-stat-val">${a.invoices}</div><div class="agent-stat-lbl">فاکتور</div></div>
-                <div class="agent-stat"><div class="agent-stat-val">${parseInt(a.revenue || 0).toLocaleString('fa')}</div><div class="agent-stat-lbl">درآمد (تومان)</div></div>
-            </div>
-        `;
-        el.onclick = () => {
-            const radio = el.querySelector('input[type=radio]');
-            radio.checked = true;
-            selectedAgentId = a.id;
-            document.getElementById('btn-preview').disabled = false;
-            document.querySelectorAll('#agent-select-list .agent-card').forEach(e => e.classList.remove('selected'));
-            el.classList.add('selected');
-        };
+        el.innerHTML = '<div class="agent-head"><input type="radio" name="sel-agent" value="' + a.id + '" style="margin-left:8px"><span class="agent-badge ' + a.agent + '">' + (a.agent==='n2'?'پیشرفته':'عادی') + '</span><b>#' + a.id + '</b> — ' + (a.username||a.namecustom||'بدون نام') + '</div><div class="agent-stats"><div class="agent-stat"><div class="agent-stat-val">' + a.downline + '</div><div class="agent-stat-lbl">زیرمجموعه</div></div><div class="agent-stat"><div class="agent-stat-val">' + a.customers + '</div><div class="agent-stat-lbl">مشتری</div></div><div class="agent-stat"><div class="agent-stat-val">' + a.invoices + '</div><div class="agent-stat-lbl">فاکتور</div></div><div class="agent-stat"><div class="agent-stat-val">' + parseInt(a.revenue||0).toLocaleString('fa') + '</div><div class="agent-stat-lbl">درآمد</div></div></div>';
+        el.onclick = () => { el.querySelector('input[type=radio]').checked = true; selectedAgentId = a.id; document.getElementById('btn-preview').disabled = false; document.querySelectorAll('#agent-select-list .agent-card').forEach(e => e.classList.remove('selected')); el.classList.add('selected'); };
         list.appendChild(el);
     });
 }
 
-function goStep3Back() {
-    document.getElementById('step4').style.display = 'none';
-    if (migrationMode === 'agent') {
-        document.getElementById('step3').style.display = 'block';
-        setActiveStep(3);
-    } else {
-        document.getElementById('step2').style.display = 'block';
-        setActiveStep(2);
-    }
-}
+function goStep3Back() { document.getElementById('step4').style.display = 'none'; if (migrationMode === 'agent') { document.getElementById('step3').style.display = 'block'; setActiveStep(3); } else { document.getElementById('step2').style.display = 'block'; setActiveStep(2); } }
 
-// STEP 4: Preview
 async function goStep4() {
     document.getElementById('step4').style.display = 'block';
     document.getElementById('step4').scrollIntoView({behavior:'smooth'});
     document.getElementById('preview-loading').style.display = 'block';
     document.getElementById('preview-result').style.display = 'none';
+    document.getElementById('preview-error').style.display = 'none';
     setActiveStep(4);
-
     try {
         let url = 'db_migrator.php?ajax=preview_import&db=' + encodeURIComponent(selectedDb) + '&mode=' + migrationMode;
         if (migrationMode === 'agent' && selectedAgentId) url += '&agent_id=' + selectedAgentId;
-        const r = await fetch(url);
-        const d = await r.json();
+        const d = await fetchJSON(url);
         document.getElementById('preview-loading').style.display = 'none';
-        if (!d.ok) { document.getElementById('preview-result').innerHTML = '<div class="rx-alert error">' + d.error + '</div>'; document.getElementById('preview-result').style.display = 'block'; return; }
-
+        if (!d.ok) { showErr('preview-error', d.error); return; }
         const summary = document.getElementById('preview-summary');
         if (migrationMode === 'agent') {
             const agent = allAgents.find(a => a.id === selectedAgentId);
-            summary.innerHTML = '👤 نماینده: <b>#' + selectedAgentId + '</b> — ' + (agent ? (agent.username || agent.namecustom) : '') +
-                '<br>📊 مجموع رکوردها: <b>' + d.total_rows.toLocaleString('fa') + '</b>' +
-                (d.ids_count ? '<br>👥 تعداد کاربران مرتبط: <b>' + d.ids_count.toLocaleString('fa') + '</b>' : '');
+            summary.innerHTML = '👤 نماینده: <b>#' + selectedAgentId + '</b> — ' + (agent ? (agent.username||agent.namecustom) : '') + '<br>📊 مجموع رکوردها: <b>' + d.total_rows.toLocaleString('fa') + '</b>' + (d.ids_count ? '<br>👥 کاربران مرتبط: <b>' + d.ids_count.toLocaleString('fa') + '</b>' : '');
         } else {
-            summary.innerHTML = '📦 مهاجرت کامل: همه کاربران، نماینده‌ها، فاکتورها، پرداخت‌ها و تنظیمات' +
-                '<br>📊 مجموع رکوردها: <b>' + d.total_rows.toLocaleString('fa') + '</b>';
+            summary.innerHTML = '📦 مهاجرت کامل<br>📊 مجموع رکوردها: <b>' + d.total_rows.toLocaleString('fa') + '</b>';
         }
-
         const grid = document.getElementById('preview-grid');
         grid.innerHTML = '';
-        Object.entries(d.preview).forEach(([tbl, cnt]) => {
-            if (cnt === 0) return;
-            const el = document.createElement('div');
-            el.className = 'preview-item';
-            el.innerHTML = '<div class="preview-num">' + cnt.toLocaleString('fa') + '</div><div class="preview-tbl">' + tbl + '</div>';
-            grid.appendChild(el);
-        });
-
+        Object.entries(d.preview).forEach(([tbl, cnt]) => { if (cnt === 0) return; const el = document.createElement('div'); el.className = 'preview-item'; el.innerHTML = '<div class="preview-num">' + cnt.toLocaleString('fa') + '</div><div class="preview-tbl">' + tbl + '</div>'; grid.appendChild(el); });
         document.getElementById('preview-result').style.display = 'block';
     } catch (e) {
         document.getElementById('preview-loading').innerHTML = '<div class="rx-alert error">خطا: ' + e.message + '</div>';
     }
 }
 
-// STEP 5: Execute
 function goStep5() {
     document.getElementById('step5').style.display = 'block';
     document.getElementById('step5').scrollIntoView({behavior:'smooth'});
     setActiveStep(5);
-
     document.getElementById('exec-mode').value = migrationMode;
     document.getElementById('exec-db').value = selectedDb;
     document.getElementById('exec-agent').value = selectedAgentId;
     document.getElementById('exec-form').style.display = 'none';
     document.getElementById('exec-loading').style.display = 'block';
-
-    // Submit after a short delay to show loading
-    setTimeout(() => {
-        document.getElementById('exec-form').submit();
-    }, 500);
+    setTimeout(() => { document.getElementById('exec-form').submit(); }, 500);
 }
 
-// Init
 setActiveStep(1);
 loadDatabases();
 </script>
