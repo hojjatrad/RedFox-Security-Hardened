@@ -314,7 +314,7 @@ function rx_nav_open(...$pages) {
         </ul>
     </details>
 
-    <details class="rx-nav-group" <?= rx_nav_open('settings.php','shopsettings.php','bot_settings.php','backup.php','iplogin.php','channels.php','maintenance.php','restore.php','backup_export.php','license.php','update.php','audit_log.php','health_monitor.php','operations.php','migrations.php','hosting_setup.php','certification.php') ?>>
+    <details class="rx-nav-group" <?= rx_nav_open('settings.php','shopsettings.php','bot_settings.php','backup.php','iplogin.php','channels.php','maintenance.php','restore.php','backup_export.php','license.php','update.php','audit_log.php','health_monitor.php','operations.php','migrations.php','db_migrator.php','hosting_setup.php','certification.php') ?>>
         <summary>🔧 سیستم <span class="rx-chev">◀</span></summary>
         <ul class="rx-nav-sub">
             <li><a href="settings.php" class="<?= $__current==='settings.php'?'rx-active':'' ?>"><span class="menu-symbol"><?php echo icon('grid','svg-icon svg-sm'); ?></span><span>تنظیمات عمومی</span></a></li>
@@ -330,6 +330,7 @@ function rx_nav_open(...$pages) {
             <li><a href="health_monitor.php" class="<?= $__current==='health_monitor.php'?'rx-active':'' ?>"><span class="menu-symbol"><?php echo icon('server','svg-icon svg-sm'); ?></span><span>مانیتور سلامت</span></a></li>
             <li><a href="operations.php" class="<?= $__current==='operations.php'?'rx-active':'' ?>"><span class="menu-symbol">🩺</span><span>مرکز عملیات</span></a></li>
             <li><a href="migrations.php" class="<?= $__current==='migrations.php'?'rx-active':'' ?>"><span class="menu-symbol">🗄</span><span>مهاجرت دیتابیس</span></a></li>
+            <li><a href="db_migrator.php" class="<?= $__current==='db_migrator.php'?'rx-active':'' ?>"><span class="menu-symbol">🔄</span><span>انتقال از دیتابیس دیگر</span></a></li>
             <li><a href="hosting_setup.php" class="<?= $__current==='hosting_setup.php'?'rx-active':'' ?>"><span class="menu-symbol">🧰</span><span>Wizard هاست</span></a></li>
             <li><a href="certification.php" class="<?= $__current==='certification.php'?'rx-active':'' ?>"><span class="menu-symbol">✅</span><span>Pre-Certification</span></a></li>
             <li><a href="about_text.php" class="<?= $__current==='about_text.php'?'rx-active':'' ?>"><span class="menu-symbol"><?php echo icon('text','svg-icon svg-sm'); ?></span><span>متون پیام‌های ربات</span></a></li>
