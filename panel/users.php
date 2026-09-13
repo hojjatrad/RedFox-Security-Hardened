@@ -36,7 +36,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && $ajaxGet === 'sync_count'
                              LEFT JOIN marzban_panel mp ON mp.name_panel = i.Service_location
                              WHERE i.Status IN ('active','end_of_time','end_of_volume','sendedwarn','send_on_hold')
                                AND i.username IS NOT NULL AND i.username != ''
-                               AND mp.type IN ('marzban','marzneshin')");
+                               AND mp.type IN ('marzban','marzneshin','pasargard')");
         echo json_encode(['ok' => true, 'count' => (int)$stmt->fetchColumn()]);
     } catch (Throwable $e) {
         echo json_encode(['ok' => false, 'error' => 'count_failed']);
@@ -77,7 +77,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ajaxPost !== '') {
                                    LEFT JOIN marzban_panel mp ON mp.name_panel = i.Service_location
                                    WHERE i.Status IN ('active','end_of_time','end_of_volume','sendedwarn','send_on_hold')
                                      AND i.username IS NOT NULL AND i.username != ''
-                                     AND mp.type IN ('marzban','marzneshin')
+                                     AND mp.type IN ('marzban','marzneshin','pasargard')
                                    ORDER BY i.time_sell DESC
                                    LIMIT :lim OFFSET :off");
             $stmt->bindValue(':lim', $batch, PDO::PARAM_INT);
@@ -92,16 +92,19 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ajaxPost !== '') {
 
         $synced = 0;
         $failed = 0;
+        $errors = [];
         foreach ($rows as $row) {
             $syncResult = redfox_sync_invoice_row($row);
-            if (!empty($syncResult['ok'])) $synced++; else $failed++;
+            if (!empty($syncResult['ok'])) { $synced++; } else { $failed++; $errors[] = (string)($syncResult['error'] ?? 'unknown'); }
         }
+        $errSummary = $errors ? array_count_values($errors) : [];
         echo json_encode([
             'ok' => true,
             'synced' => $synced,
             'failed' => $failed,
             'batch_count' => count($rows),
             'done' => count($rows) < $batch,
+            'errors' => $errSummary,
         ]);
         exit;
     }
@@ -184,8 +187,14 @@ function redfox_sync_invoice_row($row) {
     global $pdo;
     $url = rtrim((string)($row['url_panel'] ?? ''), '/');
     $panelUser = (string)($row['username_panel'] ?? '');
-    $panelPass = (string)rx_secret_decrypt(isset($row['password_panel']) ? (string)$row['password_panel'] : '');
-    $type = (string)($row['type'] ?? 'marzban');
+    try {
+        $panelPass = (string)rx_secret_decrypt(isset($row['password_panel']) ? (string)$row['password_panel'] : '');
+    } catch (Throwable $__de) {
+        error_log('[users sync] decrypt failed: ' . redfox_exception_fingerprint($__de));
+        return ['ok'=>false,'error'=>'decrypt_failed'];
+    }
+    $type = (string)($row['type'] ?? '');
+    if ($type === '' || $type === 'pasargard') $type = 'marzban'; // fallback
     $panelUsername = (string)($row['username'] ?? '');
     if ($url === '' || $panelUser === '' || $panelUsername === '') return ['ok'=>false,'error'=>'no_panel_info'];
 

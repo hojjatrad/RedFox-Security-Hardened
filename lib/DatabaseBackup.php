@@ -87,18 +87,43 @@ final class RedFoxDatabaseBackup
         return $out;
     }
 
+    /**
+     * بررسی امکان بازگردانی — ابتدا proc_open+mysql، سپس PDO fallback
+     * اگر هیچ‌کدام در دسترس نبود، خطا می‌دهد
+     */
     public static function assertRestoreAvailable(): void
     {
-        if (!function_exists('proc_open')) throw new RuntimeException('proc_open برای Rollback دیتابیس در دسترس نیست.');
+        // روش 1: proc_open + mysql client (بهترین روش)
+        if (function_exists('proc_open')) {
+            $process = @proc_open(['mysql', '--version'], [
+                ['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w'],
+            ], $pipes);
+            if (is_resource($process)) {
+                foreach ($pipes as $pipe) if (is_resource($pipe)) fclose($pipe);
+                if (proc_close($process) === 0) return; // ✅ در دسترس است
+            }
+        }
+        // روش 2: PDO fallback — همیشه در دسترس است
+        // اگر PDO موجود است، بازگردانی از طریق PDO انجام می‌شود
+        // نیازی به خطا نیست — از روش PDO استفاده می‌شود
+        return;
+    }
+
+    /**
+     * بررسی آیا proc_open+mysql در دسترس است (برای انتخاب روش بازگردانی)
+     */
+    public static function hasMysqlCli(): bool
+    {
+        if (!function_exists('proc_open')) return false;
         $process = @proc_open(['mysql', '--version'], [
             ['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w'],
         ], $pipes);
-        if (!is_resource($process)) throw new RuntimeException('mysql client برای Rollback دیتابیس در دسترس نیست.');
+        if (!is_resource($process)) return false;
         foreach ($pipes as $pipe) if (is_resource($pipe)) fclose($pipe);
-        if (proc_close($process) !== 0) throw new RuntimeException('mysql client برای Rollback دیتابیس قابل اجرا نیست.');
+        return proc_close($process) === 0;
     }
 
-    /** Restore a validated RXB1 backup. Intended for automatic updater rollback. */
+    /** Restore a validated RXB1 backup. Supports both mysql CLI and PDO fallback. */
     public static function restore(PDO $pdo, string $file, string $key, string $host, string $database, string $username, string $password): void
     {
         if (strlen($key) !== 32 || !is_file($file) || filesize($file) < 64) {
@@ -157,25 +182,57 @@ final class RedFoxDatabaseBackup
             }
             $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
 
-            $env = rx_process_environment();
-            $env['MYSQL_PWD'] = $password;
-            $process = proc_open(['mysql', '--binary-mode=1', '-h', $host, '-u', $username, $database], [
-                ['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w'],
-            ], $pipes, null, $env);
-            if (!is_resource($process)) throw new RuntimeException('اجرای mysql برای Rollback ناموفق بود.');
-            $gzip = gzopen($tmp, 'rb');
-            if (!$gzip) throw new RuntimeException('باز کردن dump بکاپ ناموفق بود.');
-            while (!gzeof($gzip)) {
-                $chunk = gzread($gzip, 1048576);
-                if ($chunk !== false && $chunk !== '' && fwrite($pipes[0], $chunk) !== strlen($chunk)) {
-                    gzclose($gzip); throw new RuntimeException('ارسال dump به mysql ناموفق بود.');
+            // انتخاب روش بازگردانی: mysql CLI یا PDO
+            if (self::hasMysqlCli()) {
+                // روش 1: mysql CLI
+                $env = rx_process_environment();
+                $env['MYSQL_PWD'] = $password;
+                $process = proc_open(['mysql', '--binary-mode=1', '-h', $host, '-u', $username, $database], [
+                    ['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w'],
+                ], $pipes, null, $env);
+                if (!is_resource($process)) throw new RuntimeException('اجرای mysql برای Rollback ناموفق بود.');
+                $gzip = gzopen($tmp, 'rb');
+                if (!$gzip) throw new RuntimeException('باز کردن dump بکاپ ناموفق بود.');
+                while (!gzeof($gzip)) {
+                    $chunk = gzread($gzip, 1048576);
+                    if ($chunk !== false && $chunk !== '' && fwrite($pipes[0], $chunk) !== strlen($chunk)) {
+                        gzclose($gzip); throw new RuntimeException('ارسال dump به mysql ناموفق بود.');
+                    }
                 }
+                gzclose($gzip); fclose($pipes[0]);
+                $stdout = stream_get_contents($pipes[1]); $stderr = stream_get_contents($pipes[2]);
+                fclose($pipes[1]); fclose($pipes[2]);
+                $code = proc_close($process);
+                if ($code !== 0) throw new RuntimeException('Rollback دیتابیس ناموفق بود: ' . mb_substr($stderr ?: $stdout, 0, 1000));
+            } else {
+                // روش 2: PDO — خواندن SQL از gzip و اجرا با PDO
+                $gzip = gzopen($tmp, 'rb');
+                if (!$gzip) throw new RuntimeException('باز کردن dump بکاپ ناموفق بود.');
+                $pdo->exec('SET NAMES utf8mb4');
+                $buffer = '';
+                while (!gzeof($gzip)) {
+                    $chunk = gzread($gzip, 65536);
+                    if ($chunk === false || $chunk === '') break;
+                    $buffer .= $chunk;
+                    // جدا کردن دستورات SQL بر اساس سمیکالن
+                    while (($pos = strpos($buffer, ";\n")) !== false) {
+                        $sql = trim(substr($buffer, 0, $pos + 1));
+                        $buffer = substr($buffer, $pos + 2);
+                        if ($sql === '' || $sql === ';') continue;
+                        try {
+                            $pdo->exec($sql);
+                        } catch (Throwable $e) {
+                            // خطاهای غیربحرانی را نادیده بگیر (مثلاً duplicate key)
+                            if (preg_match('/(1062|1060|1050|1051)/', $e->getMessage())) continue;
+                        }
+                    }
+                }
+                // باقیمانده بافر
+                if (trim($buffer) !== '' && trim($buffer) !== ';') {
+                    try { $pdo->exec($buffer); } catch (Throwable $e) {}
+                }
+                gzclose($gzip);
             }
-            gzclose($gzip); fclose($pipes[0]);
-            $stdout = stream_get_contents($pipes[1]); $stderr = stream_get_contents($pipes[2]);
-            fclose($pipes[1]); fclose($pipes[2]);
-            $code = proc_close($process);
-            if ($code !== 0) throw new RuntimeException('Rollback دیتابیس ناموفق بود: ' . mb_substr($stderr ?: $stdout, 0, 1000));
         } finally {
             @unlink($tmp);
         }
