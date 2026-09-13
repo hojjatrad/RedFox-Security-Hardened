@@ -3,12 +3,11 @@
  * RedFox+ Database Migrator — ابزار مهاجرت انتخابی از دیتابیس‌های دیگر
  *
  * مراحل:
- *   1) نمایش دیتابیس‌های موجود روی سرور
- *   2) انتخاب دیتابیس مبدأ و اتصال
- *   3) تحلیل جداول و نمایش نماینده‌ها با آمار
- *   4) انتخاب نوع مهاجرت (نماینده خاص / همه / سفارشی)
- *   5) پیش‌نمایش و تأیید نهایی
- *   6) اجرای import و نمایش نتیجه
+ *   1) نمایش دیتابیس‌های موجود روی سرور + امکان وارد کردن دستی
+ *   2) انتخاب دیتابیس مبدأ و اتصال + تحلیل جداول
+ *   3) انتخاب نماینده یا مهاجرت همه
+ *   4) پیش‌نمایش و تأیید نهایی
+ *   5) اجرای import و نمایش نتیجه
  */
 declare(strict_types=1);
 ob_start();
@@ -20,32 +19,32 @@ redfox_security_headers();
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/lib/icons.php';
 
-// ── Auth (skip for AJAX to avoid redirect issues) ──
-if (!isset($_GET['ajax'])) {
-    if (!isset($pdo) || !($pdo instanceof PDO)) {
-        http_response_code(503);
-        exit('Database not available');
-    }
-    $stmt = $pdo->prepare('SELECT * FROM admin WHERE username=? LIMIT 1');
-    $stmt->execute([(string)($_SESSION['user'] ?? '')]);
-    $admin = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$admin) { header('Location: login.php'); exit; }
-    if (($admin['rule'] ?? '') !== 'administrator') { http_response_code(403); exit; }
-} else {
-    // AJAX: still verify session but don't redirect
-    if (!isset($pdo) || !($pdo instanceof PDO)) {
+// ── Auth ──
+if (empty($_SESSION['user'])) {
+    if (isset($_GET['ajax'])) {
+        ob_end_clean();
         header('Content-Type: application/json; charset=utf-8');
-        ob_end_flush();
-        echo json_encode(['ok'=>false,'error'=>'دیتابیس در دسترس نیست']);
-        exit;
-    }
-    if (empty($_SESSION['user'])) {
-        header('Content-Type: application/json; charset=utf-8');
-        ob_end_flush();
         echo json_encode(['ok'=>false,'error'=>'جلسه منقضی شده — لطفاً صفحه را رفرش کنید']);
         exit;
     }
+    header('Location: login.php');
+    exit;
 }
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    if (isset($_GET['ajax'])) {
+        ob_end_clean();
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok'=>false,'error'=>'دیتابیس در دسترس نیست']);
+        exit;
+    }
+    http_response_code(503);
+    exit('Database not available');
+}
+$stmt = $pdo->prepare('SELECT * FROM admin WHERE username=? LIMIT 1');
+$stmt->execute([(string)$_SESSION['user']]);
+$admin = $stmt->fetch(PDO::FETCH_ASSOC);
+if (!$admin) { header('Location: login.php'); exit; }
+if (($admin['rule'] ?? '') !== 'administrator') { http_response_code(403); exit; }
 
 // ── Get DB credentials from globals (set by config.php) ──
 $_dbhost = (string)($GLOBALS['dbhost'] ?? 'localhost');
@@ -71,13 +70,48 @@ function mz_connect_db(string $host, string $user, string $pass, string $db): ?P
     }
 }
 
-function mz_list_databases(PDO $pdo): array {
+/**
+ * لیست تمام دیتابیس‌ها — ابتدا SHOW DATABASES، سپس information_schema، سپس بررسی دایرکتوری
+ */
+function mz_list_all_databases(PDO $pdo, string $currentDb): array {
+    $found = [];
+    
+    // روش 1: SHOW DATABASES
     try {
         $rows = $pdo->query("SHOW DATABASES")->fetchAll(PDO::FETCH_COLUMN);
-        return array_filter($rows, fn($d) => !in_array($d, ['information_schema','performance_schema','mysql','sys'], true));
-    } catch (Throwable $e) {
-        return [];
-    }
+        foreach ($rows as $d) {
+            if (!in_array($d, ['information_schema','performance_schema','mysql','sys'], true)) {
+                $found[$d] = true;
+            }
+        }
+    } catch (Throwable $e) {}
+    
+    // روش 2: information_schema.SCHEMATA (ممکن است دیتابیس‌های بیشتری نشان دهد)
+    try {
+        $rows = $pdo->query("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA")->fetchAll(PDO::FETCH_COLUMN);
+        foreach ($rows as $d) {
+            if (!in_array($d, ['information_schema','performance_schema','mysql','sys'], true)) {
+                $found[$d] = true;
+            }
+        }
+    } catch (Throwable $e) {}
+    
+    // روش 3: بررسی دایرکتوری data MySQL (اگر دسترسی باشد)
+    try {
+        $datadir = $pdo->query("SELECT @@datadir")->fetchColumn();
+        if ($datadir && is_dir($datadir)) {
+            $dirs = scandir($datadir);
+            foreach ($dirs as $d) {
+                if ($d === '.' || $d === '..' || in_array($d, ['information_schema','performance_schema','mysql','sys'], true)) continue;
+                if (is_dir($datadir . '/' . $d)) {
+                    $found[$d] = true;
+                }
+            }
+        }
+    } catch (Throwable $e) {}
+    
+    ksort($found);
+    return array_keys($found);
 }
 
 function mz_table_exists(PDO $pdo, string $table): bool {
@@ -108,24 +142,63 @@ function mz_rows_to_sql(PDO $pdo, string $table, array $rows): string {
 
 // ── AJAX handler ──
 if (isset($_GET['ajax'])) {
-    // Clean any buffered output and send pure JSON
     ob_end_clean();
     header('Content-Type: application/json; charset=utf-8');
     $action = (string)$_GET['ajax'];
 
     try {
+        // ── لیست دیتابیس‌ها ──
         if ($action === 'list_dbs') {
-            // Use the SAME connection credentials that config.php already resolved
-            $tmp = mz_connect_db($_dbhost, $_dbuser, $_dbpass, 'information_schema');
+            $tmp = mz_connect_db($_dbhost, $_dbuser, $_dbpass, $_dbname);
+            if (!$tmp) {
+                // تلاش با information_schema
+                $tmp = mz_connect_db($_dbhost, $_dbuser, $_dbpass, 'information_schema');
+            }
             if (!$tmp) {
                 echo json_encode(['ok'=>false,'error'=>'اتصال به MySQL ناموفق. میزبان: '.$_dbhost.' کاربر: '.$_dbuser]);
                 exit;
             }
-            $dbs = mz_list_databases($tmp);
-            echo json_encode(['ok'=>true,'dbs'=>array_values($dbs),'current'=>$_dbname]);
+            $dbs = mz_list_all_databases($tmp, $_dbname);
+            
+            // اطلاعات هر دیتابیس
+            $dbInfo = [];
+            foreach ($dbs as $db) {
+                $info = ['name'=>$db, 'tables'=>0, 'rows'=>0, 'is_current'=>($db === $_dbname)];
+                try {
+                    $tmpDb = mz_connect_db($_dbhost, $_dbuser, $_dbpass, $db);
+                    if ($tmpDb) {
+                        $tables = $tmpDb->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
+                        $info['tables'] = count($tables);
+                        $totalRows = 0;
+                        foreach ($tables as $t) {
+                            $totalRows += mz_count_rows($tmpDb, $t);
+                        }
+                        $info['rows'] = $totalRows;
+                    }
+                } catch (Throwable $e) {}
+                $dbInfo[] = $info;
+            }
+            
+            echo json_encode(['ok'=>true,'dbs'=>$dbInfo,'current'=>$_dbname,'host'=>$_dbhost,'user'=>$_dbuser]);
             exit;
         }
 
+        // ── اتصال به دیتابیس دستی ──
+        if ($action === 'test_db') {
+            $db = (string)($_GET['db'] ?? '');
+            if ($db === '' || !preg_match('/^[A-Za-z0-9_]+$/', $db)) {
+                echo json_encode(['ok'=>false,'error'=>'نام دیتابیس نامعتبر']); exit;
+            }
+            $testPdo = mz_connect_db($_dbhost, $_dbuser, $_dbpass, $db);
+            if (!$testPdo) {
+                echo json_encode(['ok'=>false,'error'=>'اتصال به دیتابیس `'.$db.'` ناموفق — نام را بررسی کنید']); exit;
+            }
+            $tables = $testPdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
+            echo json_encode(['ok'=>true,'db'=>$db,'tables'=>count($tables)]);
+            exit;
+        }
+
+        // ── تحلیل دیتابیس ──
         if ($action === 'analyze_db') {
             $src = (string)($_GET['db'] ?? '');
             if ($src === '' || !preg_match('/^[A-Za-z0-9_]+$/', $src)) {
@@ -147,7 +220,7 @@ if (isset($_GET['ajax'])) {
                 $tables[] = ['name'=>$t, 'rows'=>$cnt, 'important'=>in_array($t, $important, true)];
             }
 
-            // Find agents/resellers
+            // پیدا کردن نماینده‌ها
             $agents = [];
             $has_agent_col = false;
             try {
@@ -195,6 +268,7 @@ if (isset($_GET['ajax'])) {
             exit;
         }
 
+        // ── پیش‌نمایش مهاجرت ──
         if ($action === 'preview_import') {
             $mode = (string)($_GET['mode'] ?? '');
             $src = (string)($_GET['db'] ?? '');
@@ -318,23 +392,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
 
                     $table_configs = [
                         ['table'=>'user', 'query'=>"SELECT * FROM user WHERE id IN ($ph)", 'params'=>$ids],
-                        ['table'=>'Requestagent', 'query'=>"SELECT * FROM Requestagent WHERE id = ?", 'params'=>[$agentId], 'exists'=>true],
+                        ['table'=>'Requestagent', 'query'=>"SELECT * FROM Requestagent WHERE id = ?", 'params'=>[$agentId]],
                         ['table'=>'invoice', 'query'=>"SELECT * FROM invoice WHERE id_user IN ($ph) OR refral = ?", 'params'=>array_merge($ids, [$agentId])],
-                        ['table'=>'Payment_report', 'query'=>"SELECT * FROM Payment_report WHERE id_user IN ($ph)", 'params'=>$ids, 'exists'=>true],
-                        ['table'=>'botsaz', 'query'=>"SELECT * FROM botsaz WHERE id_user IN ($ph)", 'params'=>$ids, 'exists'=>true],
-                        ['table'=>'reseller_cards', 'query'=>"SELECT * FROM reseller_cards WHERE reseller_id = ?", 'params'=>[$agentId], 'exists'=>true],
-                        ['table'=>'reseller_ai_feature', 'query'=>"SELECT * FROM reseller_ai_feature WHERE reseller_id = ?", 'params'=>[$agentId], 'exists'=>true],
-                        ['table'=>'reseller_categories', 'query'=>"SELECT * FROM reseller_categories WHERE reseller_id = ?", 'params'=>[$agentId], 'exists'=>true],
-                        ['table'=>'reseller_wallet_ledger', 'query'=>"SELECT * FROM reseller_wallet_ledger WHERE actor_reseller_id = ?", 'params'=>[$agentId], 'exists'=>true],
-                        ['table'=>'reseller_audit_log', 'query'=>"SELECT * FROM reseller_audit_log WHERE reseller_id = ?", 'params'=>[$agentId], 'exists'=>true],
-                        ['table'=>'DiscountSell', 'query'=>"SELECT * FROM DiscountSell WHERE id_user IN ($ph)", 'params'=>$ids, 'exists'=>true],
-                        ['table'=>'service_other', 'query'=>"SELECT * FROM service_other WHERE id_user IN ($ph)", 'params'=>$ids, 'exists'=>true],
-                        ['table'=>'cancel_service', 'query'=>"SELECT * FROM cancel_service WHERE id_user IN ($ph)", 'params'=>$ids, 'exists'=>true],
+                        ['table'=>'Payment_report', 'query'=>"SELECT * FROM Payment_report WHERE id_user IN ($ph)", 'params'=>$ids],
+                        ['table'=>'botsaz', 'query'=>"SELECT * FROM botsaz WHERE id_user IN ($ph)", 'params'=>$ids],
+                        ['table'=>'reseller_cards', 'query'=>"SELECT * FROM reseller_cards WHERE reseller_id = ?", 'params'=>[$agentId]],
+                        ['table'=>'reseller_ai_feature', 'query'=>"SELECT * FROM reseller_ai_feature WHERE reseller_id = ?", 'params'=>[$agentId]],
+                        ['table'=>'reseller_categories', 'query'=>"SELECT * FROM reseller_categories WHERE reseller_id = ?", 'params'=>[$agentId]],
+                        ['table'=>'reseller_wallet_ledger', 'query'=>"SELECT * FROM reseller_wallet_ledger WHERE actor_reseller_id = ?", 'params'=>[$agentId]],
+                        ['table'=>'reseller_audit_log', 'query'=>"SELECT * FROM reseller_audit_log WHERE reseller_id = ?", 'params'=>[$agentId]],
+                        ['table'=>'DiscountSell', 'query'=>"SELECT * FROM DiscountSell WHERE id_user IN ($ph)", 'params'=>$ids],
+                        ['table'=>'service_other', 'query'=>"SELECT * FROM service_other WHERE id_user IN ($ph)", 'params'=>$ids],
+                        ['table'=>'cancel_service', 'query'=>"SELECT * FROM cancel_service WHERE id_user IN ($ph)", 'params'=>$ids],
                     ];
 
                     foreach ($table_configs as $tc) {
                         $tbl = $tc['table'];
-                        if (!empty($tc['exists']) && !mz_table_exists($srcPdo, $tbl)) continue;
+                        if (!mz_table_exists($srcPdo, $tbl)) { $errors[] = "جدول `{$tbl}` در دیتابیس مبدأ وجود ندارد — رد شد."; continue; }
                         if (!mz_table_exists($pdo, $tbl)) { $errors[] = "جدول `{$tbl}` در دیتابیس فعلی وجود ندارد — رد شد."; continue; }
                         try {
                             $stmt = $srcPdo->prepare($tc['query']);
@@ -404,11 +478,12 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
 .rx-btn-red{background:var(--rx-red);color:#fff}.rx-btn-orange{background:var(--rx-orange);color:#000}
 .rx-btn-ghost{background:transparent;color:var(--rx-accent);border:1px solid var(--rx-accent)}
 .rx-btn-sm{padding:6px 14px;font-size:.85em}
-.db-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;max-height:400px;overflow-y:auto;padding:4px}
-.db-item{background:var(--rx-bg);border:2px solid var(--rx-border);border-radius:10px;padding:12px 14px;cursor:pointer;transition:.2s;display:flex;align-items:center;gap:10px}
+.db-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;max-height:500px;overflow-y:auto;padding:4px}
+.db-item{background:var(--rx-bg);border:2px solid var(--rx-border);border-radius:10px;padding:14px;cursor:pointer;transition:.2s;display:flex;align-items:center;gap:12px}
 .db-item:hover{border-color:var(--rx-accent);background:rgba(99,102,241,.06)}.db-item.selected{border-color:var(--rx-green);background:rgba(34,197,94,.08)}
-.db-item.current{border-color:var(--rx-orange)}.db-item.current::after{content:'📍 فعلی';font-size:.7em;background:var(--rx-orange);color:#000;padding:2px 6px;border-radius:4px;margin-right:auto}
-.db-icon{font-size:1.4em}.db-name{font-weight:600;font-size:.95em}.db-name small{display:block;color:var(--rx-muted);font-weight:400;font-size:.75em}
+.db-item.current{border-color:var(--rx-orange);opacity:.6;cursor:default}.db-item.current::after{content:'📍 فعلی';font-size:.7em;background:var(--rx-orange);color:#000;padding:2px 6px;border-radius:4px;margin-right:auto}
+.db-icon{font-size:1.6em}.db-name{font-weight:600;font-size:.95em}.db-name small{display:block;color:var(--rx-muted);font-weight:400;font-size:.75em;margin-top:2px}
+.db-meta{display:flex;gap:12px;margin-top:4px}.db-meta span{font-size:.75em;color:var(--rx-muted)}
 .agent-card{background:var(--rx-bg);border:2px solid var(--rx-border);border-radius:12px;padding:14px;cursor:pointer;transition:.2s;margin-bottom:8px}
 .agent-card:hover{border-color:var(--rx-accent)}.agent-card.selected{border-color:var(--rx-green);background:rgba(34,197,94,.06)}
 .agent-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
@@ -440,6 +515,8 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
 .search-box{position:relative;margin-bottom:14px}
 .search-box input{padding-left:36px}
 .search-box::before{content:'🔍';position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:.9em}
+.manual-db{background:var(--rx-bg);border:2px dashed var(--rx-border);border-radius:12px;padding:16px;margin-top:14px;text-align:center}
+.manual-db input{margin:0 8px}
 </style>
 </head><body>
 <div class="rx-wrap">
@@ -455,17 +532,29 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
     <div class="rx-step-item" id="step-ind-5"><div class="rx-step-num">۵</div><div class="rx-step-label">اجرای مهاجرت</div></div>
 </div>
 
+<!-- ═══════ مرحله ۱: انتخاب دیتابیس ═══════ -->
 <div class="rx-card" id="step1">
     <h2>🗄️ مرحله ۱: انتخاب دیتابیس مبدأ</h2>
+    <p style="color:var(--rx-muted);font-size:.85em;margin-bottom:14px">
+        دیتابیسی که می‌خواهید اطلاعات آن را به دیتابیس فعلی ربات منتقل کنید انتخاب کنید.
+        دیتابیس فعلی با رنگ نارنجی مشخص شده و قابل انتخاب نیست.
+    </p>
     <div id="db-loading" style="text-align:center;padding:30px"><div class="rx-spinner"></div><br><br>در حال جستجوی دیتابیس‌ها...</div>
     <div id="db-error" style="display:none"></div>
     <div id="db-list-wrap" style="display:none">
         <div class="search-box"><input type="text" id="db-search" placeholder="جستجوی نام دیتابیس..." class="input-field" oninput="filterDbs()"></div>
         <div class="db-list" id="db-list"></div>
+        <div class="manual-db">
+            <p style="color:var(--rx-muted);font-size:.85em;margin:0 0 10px">اگر دیتابیس مورد نظر در لیست نیست، نام آن را وارد کنید:</p>
+            <input type="text" id="manual-db-name" placeholder="نام دیتابیس" class="input-field" style="max-width:250px;display:inline-block" oninput="onManualInput()">
+            <button class="rx-btn rx-btn-primary rx-btn-sm" id="btn-manual-test" onclick="testManualDb()">🔌 تست اتصال</button>
+            <div id="manual-db-status" style="margin-top:8px;font-size:.85em"></div>
+        </div>
         <div style="margin-top:14px;text-align:center"><button class="rx-btn rx-btn-primary" id="btn-analyze" disabled onclick="goStep2()">🔍 تحلیل دیتابیس انتخاب‌شده</button></div>
     </div>
 </div>
 
+<!-- ═══════ مرحله ۲: تحلیل ═══════ -->
 <div class="rx-card" id="step2" style="display:none">
     <h2>📊 مرحله ۲: تحلیل دیتابیس <span id="src-db-name" style="color:var(--rx-accent)"></span></h2>
     <div id="analyze-loading" style="text-align:center;padding:30px"><div class="rx-spinner"></div><br><br>در حال تحلیل جداول و نماینده‌ها...</div>
@@ -485,6 +574,7 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
     </div>
 </div>
 
+<!-- ═══════ مرحله ۳: انتخاب نماینده ═══════ -->
 <div class="rx-card" id="step3" style="display:none">
     <h2>👤 مرحله ۳: انتخاب نماینده</h2>
     <div class="search-box"><input type="text" id="agent-search" placeholder="جستجوی نام کاربری یا شناسه..." class="input-field" oninput="filterAgents()"></div>
@@ -495,6 +585,7 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
     </div>
 </div>
 
+<!-- ═══════ مرحله ۴: پیش‌نمایش ═══════ -->
 <div class="rx-card" id="step4" style="display:none">
     <h2>👁️ مرحله ۴: پیش‌نمایش مهاجرت</h2>
     <div id="preview-loading" style="text-align:center;padding:30px"><div class="rx-spinner"></div><br><br>در حال محاسبه...</div>
@@ -510,6 +601,7 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
     </div>
 </div>
 
+<!-- ═══════ مرحله ۵: اجرا ═══════ -->
 <div class="rx-card" id="step5" style="display:none">
     <h2>🚀 مرحله ۵: اجرای مهاجرت</h2>
     <?php if ($importResult): ?>
@@ -573,11 +665,40 @@ function filterAgents() {
     document.querySelectorAll('.agent-card').forEach(el => { el.style.display = el.dataset.search.includes(q) ? '' : 'none'; });
 }
 
+function onManualInput() {
+    // وقتی کاربر در فیلد دستی تایپ می‌کند، انتخاب لیست را پاک کن
+    const val = document.getElementById('manual-db-name').value.trim();
+    if (val) {
+        document.querySelectorAll('.db-item').forEach(e => e.classList.remove('selected'));
+        selectedDb = val;
+        document.getElementById('btn-analyze').disabled = false;
+    }
+    document.getElementById('manual-db-status').innerHTML = '';
+}
+
+async function testManualDb() {
+    const db = document.getElementById('manual-db-name').value.trim();
+    if (!db) { document.getElementById('manual-db-status').innerHTML = '<span style="color:var(--rx-orange)">نام دیتابیس را وارد کنید</span>'; return; }
+    document.getElementById('manual-db-status').innerHTML = '<div class="rx-spinner"></div> در حال تست...';
+    try {
+        const d = await fetchJSON('db_migrator.php?ajax=test_db&db=' + encodeURIComponent(db));
+        if (d.ok) {
+            document.getElementById('manual-db-status').innerHTML = '<span style="color:var(--rx-green)">✅ اتصال موفق — ' + d.tables + ' جدول یافت شد</span>';
+            selectedDb = db;
+            document.getElementById('btn-analyze').disabled = false;
+        } else {
+            document.getElementById('manual-db-status').innerHTML = '<span style="color:var(--rx-red)">❌ ' + d.error + '</span>';
+        }
+    } catch(e) {
+        document.getElementById('manual-db-status').innerHTML = '<span style="color:var(--rx-red)">خطا: ' + e.message + '</span>';
+    }
+}
+
 async function fetchJSON(url) {
     const r = await fetch(url, {credentials:'same-origin'});
     const text = await r.text();
     try { return JSON.parse(text); }
-    catch(e) { return {ok:false, error:'پاسخ سرور نامعتبر است. ممکن است جلسه منقضی شده باشد — صفحه را رفرش کنید.\n\n'+text.substring(0,200)}; }
+    catch(e) { return {ok:false, error:'پاسخ سرور نامعتبر است.\n\n'+text.substring(0,300)}; }
 }
 
 async function loadDatabases() {
@@ -590,16 +711,19 @@ async function loadDatabases() {
         const list = document.getElementById('db-list');
         list.innerHTML = '';
         d.dbs.forEach(db => {
-            const isCurrent = db === d.current;
+            const isCurrent = db.is_current;
             const el = document.createElement('div');
             el.className = 'db-item' + (isCurrent ? ' current' : '');
-            el.dataset.name = db.toLowerCase();
-            el.innerHTML = '<div class="db-icon">🗄️</div><div class="db-name">' + db + (isCurrent ? '<small>دیتابیس فعلی ربات</small>' : '') + '</div>';
+            el.dataset.name = db.name.toLowerCase();
+            el.innerHTML = '<div class="db-icon">' + (isCurrent ? '📍' : '🗄️') + '</div><div class="db-name">' + db.name +
+                (isCurrent ? '<small>دیتابیس فعلی ربات</small>' : '') +
+                '<div class="db-meta"><span>📋 ' + db.tables + ' جدول</span><span>📊 ' + db.rows.toLocaleString('fa') + ' رکورد</span></div></div>';
             if (!isCurrent) {
                 el.onclick = () => {
                     document.querySelectorAll('.db-item').forEach(e => e.classList.remove('selected'));
                     el.classList.add('selected');
-                    selectedDb = db;
+                    selectedDb = db.name;
+                    document.getElementById('manual-db-name').value = '';
                     document.getElementById('btn-analyze').disabled = false;
                 };
             }
@@ -619,6 +743,11 @@ function goStep1() {
 
 async function goStep2() {
     if (!selectedDb) return;
+    // اگر دیتابیس فعلی انتخاب شده
+    if (selectedDb === '<?= mz_h($_dbname) ?>') {
+        alert('دیتابیس فعلی ربات قابل انتخاب نیست. لطفاً یک دیتابیس دیگر انتخاب کنید.');
+        return;
+    }
     document.getElementById('step2').style.display = 'block';
     document.getElementById('step2').scrollIntoView({behavior:'smooth'});
     document.getElementById('src-db-name').textContent = selectedDb;
@@ -653,7 +782,10 @@ async function goStep2() {
                 el.onclick = () => { document.querySelectorAll('.agent-card').forEach(e => e.classList.remove('selected')); el.classList.add('selected'); selectedAgentId = a.id; document.getElementById('btn-select-agent').disabled = false; };
                 list.appendChild(el);
             });
-        } else { agentsDiv.style.display = 'none'; }
+        } else {
+            agentsDiv.style.display = 'none';
+            // اگر نماینده‌ای نیست، فقط گزینه مهاجرت همه فعال باشد
+        }
         document.getElementById('analyze-result').style.display = 'block';
     } catch (e) {
         document.getElementById('analyze-loading').innerHTML = '<div class="rx-alert error">خطا: ' + e.message + '</div>';
@@ -700,7 +832,7 @@ async function goStep4() {
             const agent = allAgents.find(a => a.id === selectedAgentId);
             summary.innerHTML = '👤 نماینده: <b>#' + selectedAgentId + '</b> — ' + (agent ? (agent.username||agent.namecustom) : '') + '<br>📊 مجموع رکوردها: <b>' + d.total_rows.toLocaleString('fa') + '</b>' + (d.ids_count ? '<br>👥 کاربران مرتبط: <b>' + d.ids_count.toLocaleString('fa') + '</b>' : '');
         } else {
-            summary.innerHTML = '📦 مهاجرت کامل<br>📊 مجموع رکوردها: <b>' + d.total_rows.toLocaleString('fa') + '</b>';
+            summary.innerHTML = '📦 مهاجرت کامل از دیتابیس <b>' + selectedDb + '</b><br>📊 مجموع رکوردها: <b>' + d.total_rows.toLocaleString('fa') + '</b>';
         }
         const grid = document.getElementById('preview-grid');
         grid.innerHTML = '';
