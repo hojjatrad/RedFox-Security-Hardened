@@ -127,17 +127,17 @@ function mz_count_rows(PDO $pdo, string $table): int {
     catch (Throwable $e) { return 0; }
 }
 
-function mz_rows_to_sql(PDO $pdo, string $table, array $rows): string {
+function mz_rows_to_sql(PDO $pdo, string $table, array $rows): array {
     $table = preg_replace('/[^A-Za-z0-9_]/', '', $table);
-    if ($table === '' || empty($rows)) return '';
-    $out = '';
+    if ($table === '' || empty($rows)) return [];
+    $stmts = [];
     foreach ($rows as $row) {
         if (!is_array($row) || empty($row)) continue;
         $cols = array_keys($row);
         $vals = array_map(fn($v) => $v === null ? 'NULL' : $pdo->quote((string)$v), array_values($row));
-        $out .= "INSERT IGNORE INTO `{$table}` (`" . implode('`,`', $cols) . "`) VALUES (" . implode(',', $vals) . ");\n";
+        $stmts[] = "INSERT IGNORE INTO `{$table}` (`" . implode('`,`', $cols) . "`) VALUES (" . implode(',', $vals) . ")";
     }
-    return $out;
+    return $stmts;
 }
 
 // ── AJAX handler ──
@@ -451,8 +451,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
                             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             if (!empty($rows)) {
                                 foreach (array_chunk($rows, 100) as $chunk) {
-                                    $sqlChunk = mz_rows_to_sql($srcPdo, $tbl, $chunk);
-                                    if ($sqlChunk !== '') $pdo->exec($sqlChunk);
+                                    $sqlStmts = mz_rows_to_sql($srcPdo, $tbl, $chunk);
+                                    foreach ($sqlStmts as $sql) { try { $pdo->exec($sql); } catch (Throwable $e) {} }
                                 }
                                 $imported[$tbl] = count($rows);
                             }
@@ -474,8 +474,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
                             $rows = $srcPdo->query("SELECT * FROM `{$tbl}`")->fetchAll(PDO::FETCH_ASSOC);
                             if (!empty($rows)) {
                                 foreach (array_chunk($rows, 100) as $chunk) {
-                                    $sqlChunk = mz_rows_to_sql($srcPdo, $tbl, $chunk);
-                                    if ($sqlChunk !== '') $pdo->exec($sqlChunk);
+                                    $sqlStmts = mz_rows_to_sql($srcPdo, $tbl, $chunk);
+                                    foreach ($sqlStmts as $sql) { try { $pdo->exec($sql); } catch (Throwable $e) {} }
                                 }
                                 $imported[$tbl] = count($rows);
                             }
