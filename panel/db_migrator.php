@@ -135,7 +135,15 @@ function mz_rows_to_sql(PDO $pdo, string $table, array $rows): array {
         if (!is_array($row) || empty($row)) continue;
         $cols = array_keys($row);
         $vals = array_map(fn($v) => $v === null ? 'NULL' : $pdo->quote((string)$v), array_values($row));
-        $stmts[] = "INSERT IGNORE INTO `{$table}` (`" . implode('`,`', $cols) . "`) VALUES (" . implode(',', $vals) . ")";
+        $colList = '`' . implode('`,`', $cols) . '`';
+        $valList = implode(',', $vals);
+        // Build ON DUPLICATE KEY UPDATE clause (skip first column = likely PK)
+        $updateParts = [];
+        foreach ($cols as $idx => $col) {
+            $updateParts[] = "`{$col}` = VALUES(`{$col}`)";
+        }
+        $updateClause = implode(', ', $updateParts);
+        $stmts[] = "INSERT INTO `{$table}` ({$colList}) VALUES ({$valList}) ON DUPLICATE KEY UPDATE {$updateClause}";
     }
     return $stmts;
 }
