@@ -255,14 +255,15 @@ function redfox_sync_invoice_row($row) {
     $url = rtrim((string)($row['url_panel'] ?? ''), '/');
     $panelUser = (string)($row['username_panel'] ?? '');
     $panelPass = '';
-    try {
-        $rawPass = isset($row['password_panel']) ? (string)$row['password_panel'] : '';
-        if ($rawPass !== '') {
+    $rawPass = isset($row['password_panel']) ? (string)$row['password_panel'] : '';
+    if ($rawPass !== '') {
+        try {
             $panelPass = (string)rx_secret_decrypt($rawPass);
+        } catch (Throwable $__de) {
+            // رمزگشایی با MASTER_KEY فعلی ممکن نبود — مقدار خام رو امتحان کن
+            // (ممکنه رمز از دیتابیس قدیمی plain text باشه یا با کلید دیگری رمزنگاری شده باشه)
+            $panelPass = $rawPass;
         }
-    } catch (Throwable $__de) {
-        error_log('[users sync] decrypt failed for invoice ' . ($row['id_invoice'] ?? '?') . ': ' . redfox_exception_fingerprint($__de));
-        return ['ok'=>false,'error'=>'decrypt_failed','detail'=>'رمز عبور پنل رمزگشایی نشد — کلید REDFOX_MASTER_KEY بررسی شود'];
     }
     $type = (string)($row['type'] ?? '');
     if ($type === '' || $type === 'pasargard') $type = 'marzban'; // fallback
