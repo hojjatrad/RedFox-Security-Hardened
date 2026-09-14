@@ -127,19 +127,33 @@ function mz_count_rows(PDO $pdo, string $table): int {
     catch (Throwable $e) { return 0; }
 }
 
-function mz_rows_to_sql(PDO $pdo, string $table, array $rows): array {
+function mz_get_columns(PDO $pdo, string $table): array {
+    try {
+        $t = preg_replace('/[^A-Za-z0-9_]/', '', $table);
+        if ($t === '') return [];
+        $rows = $pdo->query("SHOW COLUMNS FROM `{$t}`")->fetchAll(PDO::FETCH_ASSOC);
+        return array_map(fn($r) => $r['Field'], $rows);
+    } catch (Throwable $e) { return []; }
+}
+
+function mz_rows_to_sql(PDO $pdo, string $table, array $rows, array $destCols = []): array {
     $table = preg_replace('/[^A-Za-z0-9_]/', '', $table);
     if ($table === '' || empty($rows)) return [];
+    $allowedCols = !empty($destCols) ? array_flip($destCols) : null;
     $stmts = [];
     foreach ($rows as $row) {
         if (!is_array($row) || empty($row)) continue;
+        // Filter to only columns that exist in destination
+        if ($allowedCols !== null) {
+            $row = array_intersect_key($row, $allowedCols);
+        }
+        if (empty($row)) continue;
         $cols = array_keys($row);
         $vals = array_map(fn($v) => $v === null ? 'NULL' : $pdo->quote((string)$v), array_values($row));
         $colList = '`' . implode('`,`', $cols) . '`';
         $valList = implode(',', $vals);
-        // Build ON DUPLICATE KEY UPDATE clause (skip first column = likely PK)
         $updateParts = [];
-        foreach ($cols as $idx => $col) {
+        foreach ($cols as $col) {
             $updateParts[] = "`{$col}` = VALUES(`{$col}`)";
         }
         $updateClause = implode(', ', $updateParts);
@@ -434,6 +448,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
                     $ph = implode(',', array_fill(0, count($ids), '?'));
 
                     $table_configs = [
+                        ['table'=>'marzban_panel', 'query'=>"SELECT * FROM marzban_panel", 'params'=>[]],
                         ['table'=>'user', 'query'=>"SELECT * FROM user WHERE id IN ($ph)", 'params'=>$ids],
                         ['table'=>'Requestagent', 'query'=>"SELECT * FROM Requestagent WHERE id = ?", 'params'=>[$agentId]],
                         ['table'=>'invoice', 'query'=>"SELECT * FROM invoice WHERE id_user IN ($ph) OR refral = ?", 'params'=>array_merge($ids, [$agentId])],
@@ -454,15 +469,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
                         if (!mz_table_exists($srcPdo, $tbl)) { $errors[] = "جدول `{$tbl}` در دیتابیس مبدأ وجود ندارد — رد شد."; continue; }
                         if (!mz_table_exists($pdo, $tbl)) { $errors[] = "جدول `{$tbl}` در دیتابیس فعلی وجود ندارد — رد شد."; continue; }
                         try {
+                            $destCols = mz_get_columns($pdo, $tbl);
                             $stmt = $srcPdo->prepare($tc['query']);
                             $stmt->execute($tc['params']);
                             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             if (!empty($rows)) {
-                                foreach (array_chunk($rows, 100) as $chunk) {
-                                    $sqlStmts = mz_rows_to_sql($srcPdo, $tbl, $chunk);
-                                    foreach ($sqlStmts as $sql) { try { $pdo->exec($sql); } catch (Throwable $e) {} }
+                                $fetched = count($rows);
+                                $inserted = 0;
+                                $tblErrors = [];
+                                foreach (array_chunk($rows, 50) as $chunk) {
+                                    $sqlStmts = mz_rows_to_sql($srcPdo, $tbl, $chunk, $destCols);
+                                    foreach ($sqlStmts as $sql) {
+                                        try { $pdo->exec($sql); $inserted++; }
+                                        catch (Throwable $e) { if (count($tblErrors) < 3) $tblErrors[] = $e->getMessage(); }
+                                    }
                                 }
-                                $imported[$tbl] = count($rows);
+                                $imported[$tbl] = $inserted;
+                                if ($inserted < $fetched) $errors[] = "`{$tbl}`: {$inserted}/{$fetched} ردیف درج شد" . ($tblErrors ? ' — خطا: ' . implode(' | ', $tblErrors) : '');
                             }
                         } catch (Throwable $e) {
                             $errors[] = "خطا در `{$tbl}`: " . $e->getMessage();
@@ -471,7 +494,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
 
                 } elseif ($mode === 'all') {
                     $important = ['user','invoice','Payment_report','Requestagent','botsaz','product','category',
-                                   'reseller_cards','reseller_ai_feature','reseller_categories','reseller_wallet_ledger',
+                                   'marzban_panel','reseller_cards','reseller_ai_feature','reseller_categories','reseller_wallet_ledger',
                                    'reseller_audit_log','DiscountSell','Discount','cancel_service','service_other',
                                    'card_number','channels','help','textbot','departman','shopSetting','PaySetting',
                                    'setting'];
@@ -479,13 +502,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
                         if (!mz_table_exists($srcPdo, $tbl)) continue;
                         if (!mz_table_exists($pdo, $tbl)) { $errors[] = "جدول `{$tbl}` در دیتابیس فعلی وجود ندارد — رد شد."; continue; }
                         try {
+                            $destCols = mz_get_columns($pdo, $tbl);
                             $rows = $srcPdo->query("SELECT * FROM `{$tbl}`")->fetchAll(PDO::FETCH_ASSOC);
                             if (!empty($rows)) {
-                                foreach (array_chunk($rows, 100) as $chunk) {
-                                    $sqlStmts = mz_rows_to_sql($srcPdo, $tbl, $chunk);
-                                    foreach ($sqlStmts as $sql) { try { $pdo->exec($sql); } catch (Throwable $e) {} }
+                                $fetched = count($rows);
+                                $inserted = 0;
+                                $tblErrors = [];
+                                foreach (array_chunk($rows, 50) as $chunk) {
+                                    $sqlStmts = mz_rows_to_sql($srcPdo, $tbl, $chunk, $destCols);
+                                    foreach ($sqlStmts as $sql) {
+                                        try { $pdo->exec($sql); $inserted++; }
+                                        catch (Throwable $e) { if (count($tblErrors) < 3) $tblErrors[] = $e->getMessage(); }
+                                    }
                                 }
-                                $imported[$tbl] = count($rows);
+                                $imported[$tbl] = $inserted;
+                                if ($inserted < $fetched) $errors[] = "`{$tbl}`: {$inserted}/{$fetched} ردیف درج شد" . ($tblErrors ? ' — خطا: ' . implode(' | ', $tblErrors) : '');
                             }
                         } catch (Throwable $e) {
                             $errors[] = "خطا در `{$tbl}`: " . $e->getMessage();
