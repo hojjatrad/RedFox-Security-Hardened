@@ -100,6 +100,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ajaxPost !== '') {
         $offset = min(100000000, (int)$offsetRaw);
         $batch = (int)$batchRaw;
 
+        // Check if required tables exist
+        try {
+            $pdo->query("SELECT 1 FROM `marzban_panel` LIMIT 0");
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['ok' => false, 'error' => 'table_missing', 'detail' => 'جدول `marzban_panel` وجود ندارد. لطفاً ابتدا از بخش «انتقال از دیتابیس» جدول‌های لازم را منتقل کنید.']);
+            exit;
+        }
+
         try {
             $stmt = $pdo->prepare("SELECT i.id_invoice, i.id_user, i.username, i.Service_location,
                                           mp.url_panel, mp.username_panel, mp.password_panel, mp.type
@@ -137,6 +146,33 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ajaxPost !== '') {
             'done' => count($rows) < $batch,
             'errors' => $errSummary,
         ]);
+        exit;
+    }
+
+    // ── Debug: نمایش دلیل عدم نتیجه sync ──
+    if ($ajaxGet === 'sync_debug') {
+        $debug = ['ok' => true];
+        try { $debug['invoice_count'] = (int)$pdo->query("SELECT COUNT(*) FROM invoice")->fetchColumn(); } catch (Throwable $e) { $debug['invoice_count'] = 'error: ' . $e->getMessage(); }
+        try { $debug['active_invoices'] = (int)$pdo->query("SELECT COUNT(*) FROM invoice WHERE Status IN ('active','end_of_time','end_of_volume','sendedwarn','send_on_hold')")->fetchColumn(); } catch (Throwable $e) { $debug['active_invoices'] = 'error'; }
+        try { $debug['marzban_panel_exists'] = true; $debug['panel_count'] = (int)$pdo->query("SELECT COUNT(*) FROM marzban_panel")->fetchColumn(); } catch (Throwable $e) { $debug['marzban_panel_exists'] = false; $debug['panel_count'] = 0; }
+        try { $debug['user_count'] = (int)$pdo->query("SELECT COUNT(*) FROM `user`")->fetchColumn(); } catch (Throwable $e) { $debug['user_count'] = 'error: ' . $e->getMessage(); }
+        // Test the actual sync query
+        try {
+            $testStmt = $pdo->query("SELECT COUNT(*) FROM invoice i LEFT JOIN marzban_panel mp ON mp.name_panel = i.Service_location WHERE i.Status IN ('active','end_of_time','end_of_volume','sendedwarn','send_on_hold') AND i.username IS NOT NULL AND i.username != '' AND mp.type IN ('marzban','marzneshin','pasargard')");
+            $debug['sync_match_count'] = (int)$testStmt->fetchColumn();
+        } catch (Throwable $e) { $debug['sync_match_count'] = 'error: ' . $e->getMessage(); }
+        // Check Service_location values
+        try {
+            $sl = $pdo->query("SELECT DISTINCT Service_location FROM invoice WHERE Service_location IS NOT NULL AND Service_location != '' LIMIT 10")->fetchAll(PDO::FETCH_COLUMN);
+            $debug['service_locations'] = $sl;
+        } catch (Throwable $e) { $debug['service_locations'] = []; }
+        // Check marzban_panel name_panel values
+        try {
+            $np = $pdo->query("SELECT name_panel, type FROM marzban_panel LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
+            $debug['panels'] = $np;
+        } catch (Throwable $e) { $debug['panels'] = []; }
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode($debug, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
         exit;
     }
 
