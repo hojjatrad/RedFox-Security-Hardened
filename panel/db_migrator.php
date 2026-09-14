@@ -568,7 +568,7 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
 </div>
 
 <!-- ═══════ مرحله ۱: انتخاب دیتابیس ═══════ -->
-<div class="rx-card" id="step1">
+<div class="rx-card" id="step1" style="<?= $importResult ? 'display:none' : '' ?>">
     <h2>🗄️ مرحله ۱: انتخاب دیتابیس مبدأ</h2>
     <p style="color:var(--rx-muted);font-size:.85em;margin-bottom:14px">
         دیتابیسی که می‌خواهید اطلاعات آن را به دیتابیس فعلی ربات منتقل کنید انتخاب کنید.
@@ -645,7 +645,7 @@ body{background:var(--rx-bg);color:var(--rx-text);font-family:'Segoe UI',Tahoma,
 </div>
 
 <!-- ═══════ مرحله ۵: اجرا ═══════ -->
-<div class="rx-card" id="step5" style="display:none">
+<div class="rx-card" id="step5" style="<?= $importResult ? '' : 'display:none' ?>">
     <h2>🚀 مرحله ۵: اجرای مهاجرت</h2>
     <?php if ($importResult): ?>
         <?php if ($importResult['ok']): ?>
@@ -921,8 +921,10 @@ function goStep5() {
     setTimeout(() => { document.getElementById('exec-form').submit(); }, 500);
 }
 
-setActiveStep(1);
+setActiveStep(<?= $importResult ? '5' : '1' ?>);
+<?php if (!$importResult): ?>
 loadDatabases();
+<?php endif; ?>
 </script>
 </div>
 </body></html>

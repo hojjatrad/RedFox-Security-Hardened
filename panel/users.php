@@ -232,7 +232,7 @@ function redfox_sync_invoice_row($row) {
     if ($type === '' || $type === 'pasargard') $type = 'marzban'; // fallback
     $panelUsername = (string)($row['username'] ?? '');
     if ($url === '' || $panelUser === '' || $panelUsername === '') return ['ok'=>false,'error'=>'no_panel_info','detail'=>'آدرس/نام‌کاربری پنل خالی است'];
-    if ($row['url_panel'] ?? '' === '') return ['ok'=>false,'error'=>'no_panel_url','detail'=>'آدرس پنل در marzban_panel ثبت نشده'];
+    if (($row['url_panel'] ?? '') === '') return ['ok'=>false,'error'=>'no_panel_url','detail'=>'آدرس پنل در marzban_panel ثبت نشده'];
 
     // ۱) توکن
     $ch = curl_init($url . '/api/admin/token');
