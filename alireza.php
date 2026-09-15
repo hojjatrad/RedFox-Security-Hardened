@@ -51,7 +51,7 @@ redfox_apply_panel_curl_url_policy($curl, $rxPolicyUrl);
 $response = curl_exec($curl);
 if (curl_errno($curl)) {
         $token = [];
-        $token['errror'] = 'curl_errno_' . (int)curl_errno($curl);
+        $token['error'] = 'curl_errno_' . (int)curl_errno($curl);
         curl_close($curl);
         return $token;
     }
@@ -60,8 +60,9 @@ return json_decode($response,true);
 }
 function get_useralireza($username,$namepanel){
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel,"select");
+    if(!is_array($marzban_list_get)) return [];
     $loginalirezapanel = loginalireza($marzban_list_get['url_panel'],$marzban_list_get['username_panel'],$marzban_list_get['password_panel']);
-    if(isset($loginalirezapanel['errror']))return;
+    if(isset($loginalirezapanel['error']))return [];
     $usernameac = $username;
     $curl = curl_init();
     if (function_exists('redfox_apply_curl_proxy')) redfox_apply_curl_proxy($curl, 'panel');
@@ -74,32 +75,35 @@ curl_setopt_array($curl, array(
   CURLOPT_FOLLOWLOCATION => false,
   CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
   CURLOPT_CUSTOMREQUEST => 'GET',
+  CURLOPT_SSL_VERIFYPEER => alireza_tls_verifypeer(),
+  CURLOPT_SSL_VERIFYHOST => alireza_tls_verifyhost(),
   CURLOPT_HTTPHEADER => array(
     'Accept: application/json'
   ),
   CURLOPT_COOKIEFILE => alireza_cookie_path(),
 ));
-$output = [];
-$rxPolicyUrl = isset($marzban_list_get['url_panel']) ? (string)$marzban_list_get['url_panel'] : (string)$url;
-redfox_apply_panel_curl_url_policy($curl, $rxPolicyUrl);
-$response = curl_exec($curl);
-if(!isset($response))return;
-$response = json_decode($response,true)['obj'];
-foreach ($response as $client){
-    if($client['remark'] == $usernameac){
-        $output = $client;
-        break;
+    $output = [];
+    $rxPolicyUrl = isset($marzban_list_get['url_panel']) ? (string)$marzban_list_get['url_panel'] : (string)$url;
+    redfox_apply_panel_curl_url_policy($curl, $rxPolicyUrl);
+    $response = curl_exec($curl);
+    curl_close($curl);
+    @unlink(alireza_cookie_path());
+    if($response === false)return [];
+    $decoded = json_decode($response,true);
+    if(!is_array($decoded) || !isset($decoded['obj']) || !is_array($decoded['obj'])) return [];
+    foreach ($decoded['obj'] as $client){
+        if($client['remark'] == $usernameac){
+            $output = $client;
+            break;
+        }
     }
-}
-curl_close($curl);
-@unlink(alireza_cookie_path());
-return $output;
+    return $output;
 }
 function checkportalireza($port,$namepanel){
 
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel,"select");
     $loginalirezapanel = loginalireza($marzban_list_get['url_panel'],$marzban_list_get['username_panel'],$marzban_list_get['password_panel']);
-    if(isset($loginalirezapanel['errror']))return;
+    if(isset($loginalirezapanel['error']))return false;
     $curl = curl_init();
     if (function_exists('redfox_apply_curl_proxy')) redfox_apply_curl_proxy($curl, 'panel');
 
@@ -108,27 +112,30 @@ curl_setopt_array($curl, array(
   CURLOPT_RETURNTRANSFER => true,
   CURLOPT_ENCODING => '',
   CURLOPT_MAXREDIRS => 10,
-  CURLOPT_TIMEOUT => 0,
+  CURLOPT_TIMEOUT_MS => 4000,
   CURLOPT_FOLLOWLOCATION => false,
   CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
   CURLOPT_CUSTOMREQUEST => 'GET',
+  CURLOPT_SSL_VERIFYPEER => alireza_tls_verifypeer(),
+  CURLOPT_SSL_VERIFYHOST => alireza_tls_verifyhost(),
   CURLOPT_HTTPHEADER => array(
     'Accept: application/json'
   ),
   CURLOPT_COOKIEFILE => alireza_cookie_path(),
 ));
 redfox_apply_panel_curl_url_policy($curl, (string)$marzban_list_get['url_panel']);
-    $response = json_decode(curl_exec($curl),true)['obj'];
-foreach ($response as $client){
-    if($client['port'] == $port){
-        return true;
-        break;
-    }else{
-        return false;
+    $raw = curl_exec($curl);
+    curl_close($curl);
+    @unlink(alireza_cookie_path());
+    if($raw === false) return false;
+    $decoded = json_decode($raw, true);
+    if(!is_array($decoded) || !isset($decoded['obj']) || !is_array($decoded['obj'])) return false;
+    foreach ($decoded['obj'] as $client){
+        if(isset($client['port']) && (int)$client['port'] === (int)$port){
+            return true;
+        }
     }
-}
-curl_close($curl);
-@unlink(alireza_cookie_path());
+    return false;
 }
 
 function addinboundalireza($namepanel, $usernameac, $Port, $Expire,$Total, $Uuid, $Flow){
@@ -148,7 +155,7 @@ function addinboundalireza($namepanel, $usernameac, $Port, $Expire,$Total, $Uuid
     }
     $loginalirezapanel = loginalireza($marzban_list_get['url_panel'],$marzban_list_get['username_panel'],$marzban_list_get['password_panel']);
     $email = bin2hex(random_bytes(6));
-    if(isset($loginalirezapanel['errror']))return;
+    if(isset($loginalirezapanel['error']))return;
     $config = array(
         'enable' => true,
         'remark' => $usernameac,
@@ -215,7 +222,7 @@ function updateinboundalireza($namepanel, $inboundid,array $config){
 
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel,"select");
     $loginalirezapanel = loginalireza($marzban_list_get['url_panel'],$marzban_list_get['username_panel'],$marzban_list_get['password_panel']);
-    if(isset($loginalirezapanel['errror']))return;
+    if(isset($loginalirezapanel['error']))return;
     $configpanel = json_encode($config,true);
 
     $curl = curl_init();
@@ -252,7 +259,7 @@ function ResetUserDataUsagealireza($usernamepanel, $namepanel){
     $data_user = get_useralireza($usernamepanel,$namepanel);
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $namepanel,"select");
     $loginalirezapanel = loginalireza($marzban_list_get['url_panel'],$marzban_list_get['username_panel'],$marzban_list_get['password_panel']);
-    if(isset($loginalirezapanel['errror']))return;
+    if(isset($loginalirezapanel['error']))return;
     $curl = curl_init();
     if (function_exists('redfox_apply_curl_proxy')) redfox_apply_curl_proxy($curl, 'panel');
 curl_setopt_array($curl, array(
@@ -286,10 +293,10 @@ function remove_useralireza($location,$username){
 
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $location,"select");
     $loginalirezapanel = loginalireza($marzban_list_get['url_panel'],$marzban_list_get['username_panel'],$marzban_list_get['password_panel']);
-    if(isset($loginalirezapanel['errror']))return;
+    if(isset($loginalirezapanel['error']))return;
     $data_user = get_useralireza($username,$location);
     $loginalirezapanel = loginalireza($marzban_list_get['url_panel'],$marzban_list_get['username_panel'],$marzban_list_get['password_panel']);
-    if(isset($loginalirezapanel['errror']))return;
+    if(isset($loginalirezapanel['error']))return;
     $curl = curl_init();
     if (function_exists('redfox_apply_curl_proxy')) redfox_apply_curl_proxy($curl, 'panel');
     curl_setopt_array($curl, array(
@@ -297,11 +304,13 @@ function remove_useralireza($location,$username){
   CURLOPT_RETURNTRANSFER => true,
   CURLOPT_ENCODING => '',
   CURLOPT_MAXREDIRS => 10,
-  CURLOPT_TIMEOUT => 0,
+  CURLOPT_TIMEOUT_MS => 4000,
   CURLOPT_FOLLOWLOCATION => false,
   CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
   CURLOPT_CUSTOMREQUEST => 'POST',
   CURLOPT_COOKIEFILE => alireza_cookie_path(),
+  CURLOPT_SSL_VERIFYPEER => alireza_tls_verifypeer(),
+  CURLOPT_SSL_VERIFYHOST => alireza_tls_verifyhost(),
   CURLOPT_HTTPHEADER => array(
     'Accept: application/json',
   ),
@@ -316,11 +325,16 @@ return $response;
 function get_onlineuseralireza($name_panel,$username){
 
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $name_panel,"select");
+    if(!is_array($marzban_list_get)) return "offline";
     $loginalirezapanel = loginalireza($marzban_list_get['url_panel'],$marzban_list_get['username_panel'],$marzban_list_get['password_panel']);
-    if(isset($loginalirezapanel['errror']))return;
-    $user = json_decode(get_useralireza($username,$name_panel)['settings'],true)['clients'][0];
+    if(isset($loginalirezapanel['error']))return "offline";
+    $userData = get_useralireza($username,$name_panel);
+    if(!is_array($userData) || empty($userData['settings'])) return "offline";
+    $clients = json_decode($userData['settings'],true);
+    if(!is_array($clients) || !isset($clients['clients'][0]['email'])) return "offline";
+    $userEmail = $clients['clients'][0]['email'];
     $loginalirezapanel = loginalireza($marzban_list_get['url_panel'],$marzban_list_get['username_panel'],$marzban_list_get['password_panel']);
-    if(isset($loginalirezapanel['errror']))return;
+    if(isset($loginalirezapanel['error']))return "offline";
     $curl = curl_init();
     if (function_exists('redfox_apply_curl_proxy')) redfox_apply_curl_proxy($curl, 'panel');
 curl_setopt_array($curl, array(
@@ -328,22 +342,26 @@ curl_setopt_array($curl, array(
   CURLOPT_RETURNTRANSFER => true,
   CURLOPT_ENCODING => '',
   CURLOPT_MAXREDIRS => 10,
-  CURLOPT_TIMEOUT => 0,
+  CURLOPT_TIMEOUT_MS => 4000,
   CURLOPT_FOLLOWLOCATION => false,
   CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
   CURLOPT_CUSTOMREQUEST => 'POST',
+  CURLOPT_SSL_VERIFYPEER => alireza_tls_verifypeer(),
+  CURLOPT_SSL_VERIFYHOST => alireza_tls_verifyhost(),
   CURLOPT_HTTPHEADER => array(
     'Accept: application/json'
   ),
   CURLOPT_COOKIEFILE => alireza_cookie_path(),
 ));
 redfox_apply_panel_curl_url_policy($curl, (string)$marzban_list_get['url_panel']);
-    $response = json_decode(curl_exec($curl),true);
-if($response == null)return "offline";
-if(in_array($user['email'],$response))return "online";
-return "offline";
-curl_close($curl);
-@unlink(alireza_cookie_path());
+    $response = curl_exec($curl);
+    curl_close($curl);
+    @unlink(alireza_cookie_path());
+    if($response === false)return "offline";
+    $decoded = json_decode($response,true);
+    if(!is_array($decoded))return "offline";
+    if(in_array($userEmail,$decoded))return "online";
+    return "offline";
 
 }
 function extendalireza($Metode,$namepanel,$usernamepanel,$Service_time,$data_limit = null){

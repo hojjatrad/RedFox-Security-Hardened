@@ -176,7 +176,13 @@ $daily = redfox_rows("SELECT FROM_UNIXTIME(CAST(time_sell AS UNSIGNED), '%Y-%m-%
 $custSummary = [];
 if (!empty($customerIds)) {
     $phC = implode(',', array_fill(0, count($customerIds), '?'));
-    $custSummary = redfox_rows("SELECT i.id_user, u.username, u.namecustom, COUNT(*) cnt, COALESCE(SUM(CAST(i.price_product AS UNSIGNED)),0) total, MAX(i.time_sell) last_buy FROM invoice i LEFT JOIN user u ON u.id = i.id_user WHERE i.refral = ? GROUP BY i.id_user ORDER BY total DESC LIMIT 50", [$rid]);
+    $custSummary = redfox_rows("SELECT i.id_user, u.username, u.namecustom, u.Balance, u.User_Status,
+            COUNT(*) cnt,
+            COALESCE(SUM(CAST(i.price_product AS UNSIGNED)),0) total,
+            MAX(i.time_sell) last_buy,
+            SUM(CASE WHEN i.Status IN ($done) THEN 1 ELSE 0 END) AS active_count
+     FROM invoice i LEFT JOIN user u ON u.id = i.id_user
+     WHERE i.refral = ? GROUP BY i.id_user ORDER BY total DESC LIMIT 50", [$rid]);
 }
 // --- پرداخت‌ها ---
 $payCust = [];
@@ -360,18 +366,21 @@ code{color:var(--text-main)}.text-muted{color:var(--text-muted)}
 <?php // ===== TAB: CUSTOMERS ===== ?>
 <?php if ($rxTab === 'customers'): ?>
 <div class="card"><div class="card__head"><h2 class="card__title rx-card-title">👥 خلاصه‌ی مشتریان (<?= count($custSummary) ?>)</h2></div>
-<div class="table-wrap"><table class="app-table" style="width:100%"><thead><tr><th>آیدی</th><th>نام</th><th>تعداد خرید</th><th>مجموع خرید</th><th>آخرین خرید</th></tr></thead><tbody>
+<div class="table-wrap"><table class="app-table" style="width:100%"><thead><tr><th>آیدی</th><th>نام</th><th>وضعیت</th><th>موجودی</th><th>تعداد خرید</th><th>سرویس فعال</th><th>مجموع خرید</th><th>آخرین خرید</th></tr></thead><tbody>
 <?php foreach ($custSummary as $cs):
     $lts = (int)$cs['last_buy'];
 ?>
 <tr><td><code><?= htmlspecialchars((string)$cs['id_user'],ENT_QUOTES) ?></code></td>
 <td><?= htmlspecialchars((string)($cs['username'] ?: $cs['namecustom'] ?: '—'),ENT_QUOTES,'UTF-8') ?></td>
+<td><?php if(($cs['User_Status']??'')==='Active'): ?><span style="color:var(--color-success)">🟢 فعال</span><?php elseif(($cs['User_Status']??'')==='Block'): ?><span style="color:var(--color-danger)">🔴 مسدود</span><?php else: ?><?=htmlspecialchars((string)($cs['User_Status']??'—'),ENT_QUOTES)?><?php endif; ?></td>
+<td><?= number_format((int)($cs['Balance']??0)) ?></td>
 <td><?= (int)$cs['cnt'] ?></td>
+<td><?php $ac=(int)($cs['active_count']??0); ?><?php if($ac>0): ?><span style="color:var(--color-success)">🟢 <?=$ac?></span><?php else: ?><span style="color:var(--text-muted)">—</span><?php endif; ?></td>
 <td><?= number_format((int)$cs['total']) ?></td>
 <td class="text-muted"><?= $lts > 0 ? date('Y/m/d', $lts) : '—' ?></td>
 </tr>
 <?php endforeach; ?>
-<?php if (empty($custSummary)): ?><tr><td colspan="5" class="text-muted">مشتری‌ای ثبت نشده.</td></tr><?php endif; ?>
+<?php if (empty($custSummary)): ?><tr><td colspan="8" class="text-muted">مشتری‌ای ثبت نشده.</td></tr><?php endif; ?>
 </tbody></table></div></div>
 <?php endif; // customers ?>
 

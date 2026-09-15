@@ -157,7 +157,7 @@ function panel_login_cookie($code_panel)
     $response = curl_exec($curl);
     if (curl_errno($curl)) {
         $token = [];
-        $token['errror'] = 'curl_errno_' . (int)curl_errno($curl);
+        $token['error'] = 'curl_errno_' . (int)curl_errno($curl);
         curl_close($curl);
         return $token;
     }

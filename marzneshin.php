@@ -47,7 +47,7 @@ function token_panelm($code_panel){
     $token = curl_exec($curl_token);
     if (curl_errno($curl_token)) {
         $token = [];
-        $token['errror'] = 'curl_errno_' . (int)curl_errno($curl_token);
+        $token['error'] = 'curl_errno_' . (int)curl_errno($curl_token);
         curl_close($curl_token);
         return $token;
     }

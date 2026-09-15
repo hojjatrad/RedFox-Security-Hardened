@@ -1,6 +1,23 @@
 <?php
 require_once 'config.php';
 
+function s_ui_cookie_path()
+{
+    static $path = null;
+    if ($path === null) {
+        try {
+            $entropy = bin2hex(random_bytes(8));
+        } catch (\Throwable $e) {
+            $entropy = uniqid('', true);
+        }
+        $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR
+            . 's_ui_cookie_' . getmypid() . '_' . $entropy . '.txt';
+    }
+    return $path;
+}
+
+
+
 
 
 function get_Clients_ui($username,$namepanel){
@@ -20,7 +37,7 @@ curl_setopt_array($curl, array(
   CURLOPT_HTTPHEADER => array(
     'Token: '.$marzban_list_get['password_panel']
   ),
-  CURLOPT_COOKIEFILE => 'cookie.txt',
+  CURLOPT_COOKIEFILE => s_ui_cookie_path(),
 ));
 $output = [];
     $rxPolicyUrl = isset($marzban_list_get['url_panel']) ? (string)$marzban_list_get['url_panel'] : (string)$url;

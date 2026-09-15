@@ -10,6 +10,7 @@ function rxp_nav_items(array $ctx): array {
       ['services.php','reports','🔌','سرویس‌ها'],
       ['payments.php','reports','💳','پرداخت‌ها'],
       ['reports.php','reports','📊','گزارش فروش'],
+      ['reseller_customers.php','reports','👥','مشتریان نماینده'],
       ['finance.php','reports','💰','گردش مالی'],
       ['settlements.php','profile','🏦','تسویه حساب'],
       ['messages.php','broadcast','📣','پیام‌رسانی'],

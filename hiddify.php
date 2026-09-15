@@ -5,6 +5,7 @@ require_once 'request.php';
 function getdatauser($username,$location)
 {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $location,"select");
+    if(!is_array($marzban_list_get)) return [];
     $usernameac = $username;
     $url =  $marzban_list_get['url_panel'].'/api/v2/admin/user/';
     $ch = curl_init();
@@ -20,15 +21,18 @@ function getdatauser($username,$location)
     redfox_apply_panel_curl_url_policy($ch, $url);
     $output = curl_exec($ch);
     curl_close($ch);
+    if($output === false) return [];
     $data_useer = json_decode($output, true);
+    if(!is_array($data_useer)) return [];
     if(isset($data_useer['message']))return $data_useer;
-    if(!isset($data_useer) || count($data_useer) == 0)return [];
+    if(count($data_useer) == 0)return [];
     foreach($data_useer as $data){
         if(!isset($data['name']))continue;
         if($data['name'] == $username){
             return $data;
         }
     }
+    return [];
 }
 function serverstatus($location)
 {
@@ -63,6 +67,7 @@ function updateuserhi($username,$location,array $data)
 {
     $marzban_list_get = select("marzban_panel", "*", "name_panel", $location,"select");
     $paneldata = getdatauser($username,$location);
+    if(!is_array($paneldata) || empty($paneldata['uuid'])) return ['ok'=>false,'error'=>'user_not_found'];
     $url =  $marzban_list_get['url_panel'].'/api/v2/admin/user/'.$paneldata['uuid']."/";
     $payload = json_encode($data,true);
     $headers = array(
