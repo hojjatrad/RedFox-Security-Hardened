@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/lib/Security.php';
 require_once 'config.php';
 require_once 'function.php';
 require_once 'request.php';

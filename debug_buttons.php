@@ -1,11 +1,27 @@
 <?php
+declare(strict_types=1);
 /**
- * دیباگ دکمه‌های ربات
- * این فایل را روی سرور اجرا کنید تا دقیقاً مشکل مشخص شود.
- * نحوه اجرا: php debug_buttons.php
+ * دیباگ دکمه‌های ربات - نسخه سخت‌شده (فقط CLI یا ادمین)
  */
-
-require_once 'config.php';
+$isCLI = (PHP_SAPI === 'cli');
+if (!$isCLI) {
+    require_once __DIR__ . '/lib/Security.php';
+    redfox_secure_session_start();
+    @require_once __DIR__ . '/config.php';
+    $isAdmin = false;
+    if (isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof PDO && !empty($_SESSION['user'])) {
+        try {
+            $q = $GLOBALS['pdo']->prepare('SELECT rule FROM admin WHERE username=? LIMIT 1');
+            $q->execute([$_SESSION['user']]);
+            $r = $q->fetch(PDO::FETCH_ASSOC);
+            $isAdmin = is_array($r) && ($r['rule'] ?? '') === 'administrator';
+        } catch (Throwable $e) { $isAdmin = false; }
+    }
+    if (!$isAdmin) { http_response_code(404); exit('Not Found'); }
+    header('Content-Type: text/plain; charset=utf-8');
+    echo "⚠️ دیباگ با دسترسی ادمین - پس از اتمام فایل را حذف کنید.\n\n";
+}
+require_once __DIR__ . '/config.php';
 
 echo "=== دیباگ دکمه‌های ربات ===\n\n";
 

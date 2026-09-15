@@ -1,19 +1,34 @@
 <?php
+declare(strict_types=1);
 /**
- * دیاگنوستیک سریع ربات
- * 
- * نحوه اجرا:
- * روش ۱ (ترجیحی - SSH):
- *   cd /path/to/bot && php debug_quick.php
- * 
- * روش ۲ (مرورگر):
- *   https://your-domain.com/debug_quick.php
- *   (بعد از اجرا فایل را حذف کنید!)
+ * دیاگنوستیک سریع ربات - نسخه سخت‌شده
+ * این فایل در production فقط از CLI یا با احراز هویت ادمین قابل اجراست.
+ * دسترسی وب بدون لاگین ادمین → 404
  */
-
-// جلوگیری از اجرای وب‌ای در صورت دسترسی مستقیم
-$isCLI = (php_sapi_name() === 'cli');
+$isCLI = (PHP_SAPI === 'cli');
 if (!$isCLI) {
+    require_once __DIR__ . '/lib/Security.php';
+    redfox_secure_session_start();
+    @require_once __DIR__ . '/config.php';
+    $isAdmin = false;
+    if (isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof PDO && !empty($_SESSION['user'])) {
+        try {
+            $q = $GLOBALS['pdo']->prepare('SELECT rule FROM admin WHERE username=? LIMIT 1');
+            $q->execute([$_SESSION['user']]);
+            $r = $q->fetch(PDO::FETCH_ASSOC);
+            $isAdmin = is_array($r) && ($r['rule'] ?? '') === 'administrator';
+        } catch (Throwable $e) { $isAdmin = false; }
+    }
+    if (!$isAdmin) {
+        http_response_code(404);
+        header('Content-Type: text/html; charset=utf-8');
+        exit('<!doctype html><html><head><meta charset="utf-8"><title>404</title></head><body style="background:#0a0a0f;color:#fff;font-family:sans-serif;text-align:center;padding:60px"><h1>404 - Not Found</h1></body></html>');
+    }
+    // ادمین احراز شد - ادامه با نمایش HTML
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<pre style="direction:rtl;font-family:monospace;font-size:14px;background:#1a1a2e;color:#0f0;padding:20px;">';
+    echo "⚠️ حالت دیباگ با دسترسی ادمین فعال است - پس از اتمام، این فایل را از هاست حذف کنید.\n\n";
+} else {
     echo '<pre style="direction:rtl;font-family:monospace;font-size:14px;background:#1a1a2e;color:#0f0;padding:20px;">';
 }
 

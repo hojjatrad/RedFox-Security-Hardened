@@ -37,18 +37,41 @@ final class RedFoxUpdaterSchema
             'last_file'    => "VARCHAR(500) NULL",
         ]);
 
-        // ── Seed default GitHub update source on first run ──
+        // ── Seed default GitHub update source on first run (بدون توکن هاردکد) ──
+        // توکن GitHub هرگز نباید در سورس هاردکد شود. مقدار از ENV یا تنظیمات پنل می‌آید.
+        // این بلوک فقط repo پیش‌فرض را ست می‌کند و توکن را خالی می‌گذارد تا مدیر در پنل وارد کند.
         $defaultRepo  = 'hojjatrad/RedFox-Security-Hardened';
-        $defaultToken = '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';
-        $oldExpiredToken = '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';
+        $envToken = trim((string)(getenv('REDFOX_GITHUB_TOKEN') ?: ''));
+        if ($envToken === '' && function_exists('rx_env')) {
+            try { $envToken = trim((string)(rx_env('REDFOX_GITHUB_TOKEN') ?: '')); } catch (\Throwable $e) { $envToken = ''; }
+        }
+        // هش توکن‌های قدیمی افشاشده/منقضی - برای پاک‌سازی بدون نگهداری plaintext در سورس
+        $legacyHashes = [
+            '9f14af84069843156efdca8adf071fc0cc384103aef57ff48c82bc6cb76bc642',
+            '712623ad4d05bfe111f4c39e8d2067adc1401a537436d235fc9c7a643da425b9',
+        ];
         $row = $pdo->query("SELECT github_repo, github_token FROM update_sources WHERE id=1")->fetch(PDO::FETCH_ASSOC);
+        $currentToken = trim((string)($row['github_token'] ?? ''));
+        $isLegacy = $currentToken !== '' && in_array(hash('sha256', $currentToken), $legacyHashes, true);
         if (empty($row['github_repo'])) {
-            $pdo->prepare("UPDATE update_sources SET github_repo=?, github_token=?, asset_pattern='RedFox*.zip', auto_check=1, updated_at=? WHERE id=1")
-                ->execute([$defaultRepo, $defaultToken, time()]);
-        } elseif (empty($row['github_token']) || ($row['github_token'] ?? '') === $oldExpiredToken) {
-            // جایگزینی توکن منقضی‌شده قدیمی
-            $pdo->prepare("UPDATE update_sources SET github_repo=?, github_token=?, updated_at=? WHERE id=1")
-                ->execute([$defaultRepo, $defaultToken, time()]);
+            $tokenToSet = $isLegacy ? '' : ($currentToken !== '' ? $currentToken : $envToken);
+            // هرگز توکن هاردکد ننویس؛ فقط repo را ست کن و توکن را اگر ENV داشت ست کن
+            if ($tokenToSet !== '') {
+                $pdo->prepare("UPDATE update_sources SET github_repo=?, github_token=?, asset_pattern='RedFox*.zip', auto_check=1, updated_at=? WHERE id=1")
+                    ->execute([$defaultRepo, $tokenToSet, time()]);
+            } else {
+                $pdo->prepare("UPDATE update_sources SET github_repo=?, asset_pattern='RedFox*.zip', auto_check=1, updated_at=? WHERE id=1")
+                    ->execute([$defaultRepo, time()]);
+            }
+        } elseif ($isLegacy) {
+            // پاک‌سازی توکن افشاشده/منقضی از دیتابیس - مدیر باید از پنل توکن جدید وارد کند
+            $pdo->prepare("UPDATE update_sources SET github_token=NULL, updated_at=? WHERE id=1")
+                ->execute([time()]);
+            error_log('[updater] legacy hard-coded GitHub token removed from update_sources');
+        } elseif ($currentToken === '' && $envToken !== '') {
+            // اگر ENV ست است و DB خالی است، آن را منتقل کن (یک‌بار)
+            $pdo->prepare("UPDATE update_sources SET github_token=?, updated_at=? WHERE id=1")
+                ->execute([$envToken, time()]);
         }
 
         $pdo->exec("CREATE TABLE IF NOT EXISTS `update_jobs` (

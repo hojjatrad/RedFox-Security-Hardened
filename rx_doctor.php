@@ -8,11 +8,41 @@
  * ============================================================
  */
 
-// ── جلوگیری از اجرای تصادفی در محیط CLI ──
-if (php_sapi_name() === 'cli') {
-    echo "لطفاً از طریق مرورگر اجرا کنید.\n";
-    exit;
+// ── کنترل دسترسی: فقط CLI یا ادمین لاگین‌شده ──
+$isCLI = (PHP_SAPI === 'cli');
+if (!$isCLI) {
+    require_once __DIR__ . '/lib/Security.php';
+    redfox_secure_session_start();
+    // تلاش برای لود config برای چک ادمین؛ اگر نشد 404
+    $rxDoctorPdo = null;
+    try {
+        if (!isset($GLOBALS['pdo'])) {
+            $rxDoctorConfig = __DIR__ . '/config.php';
+            if (is_file($rxDoctorConfig)) { @include $rxDoctorConfig; }
+        }
+        $rxDoctorPdo = $GLOBALS['pdo'] ?? null;
+    } catch (Throwable $e) { $rxDoctorPdo = null; }
+    $rxIsAdmin = false;
+    if ($rxDoctorPdo instanceof PDO && !empty($_SESSION['user'])) {
+        try {
+            $q = $rxDoctorPdo->prepare('SELECT rule FROM admin WHERE username=? LIMIT 1');
+            $q->execute([$_SESSION['user']]);
+            $r = $q->fetch(PDO::FETCH_ASSOC);
+            $rxIsAdmin = is_array($r) && ($r['rule'] ?? '') === 'administrator';
+        } catch (Throwable $e) { $rxIsAdmin = false; }
+    }
+    if (!$rxIsAdmin) {
+        http_response_code(404);
+        header('Content-Type: text/html; charset=utf-8');
+        exit('<!doctype html><html><head><meta charset="utf-8"><title>404</title></head><body style="background:#0a0a0f;color:#fff;font-family:sans-serif;text-align:center;padding:60px"><h1>404 - Not Found</h1><p>Doctor فقط برای ادمین قابل دسترسی است. ابتدا وارد پنل شوید یا از CLI اجرا کنید: <code>php rx_doctor.php</code></p></body></html>');
+    }
+    // ادمین است - هشدار باقی‌ماندن فایل
+    error_log('[rx_doctor] accessed by admin '.($_SESSION['user'] ?? 'unknown').' ip='.($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
+} else {
+    // CLI مجاز است
+    echo "🔧 حالت CLI - دسترسی مجاز\n\n";
 }
+unset($isCLI);
 
 // ── تنظیمات اولیه ──
 error_reporting(E_ALL);

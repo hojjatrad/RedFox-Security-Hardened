@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/lib/Security.php';
 
 function token_panelm($code_panel){
     if (isset($GLOBALS['__redfox_panel_token_cache']['marzneshin'][$code_panel])) {
