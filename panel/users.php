@@ -257,11 +257,16 @@ function redfox_sync_invoice_row($row) {
     $panelPass = '';
     $rawPass = isset($row['password_panel']) ? (string)$row['password_panel'] : '';
     if ($rawPass !== '') {
-        try {
-            $panelPass = (string)rx_secret_decrypt($rawPass);
-        } catch (Throwable $__de) {
-            // رمزگشایی با MASTER_KEY فعلی ممکن نبود — مقدار خام رو امتحان کن
-            // (ممکنه رمز از دیتابیس قدیمی plain text باشه یا با کلید دیگری رمزنگاری شده باشه)
+        if (rx_secret_is_encrypted($rawPass)) {
+            // رمز عبور رمزنگاری شده — تلاش برای رمزگشایی
+            try {
+                $panelPass = (string)rx_secret_decrypt($rawPass);
+            } catch (Throwable $__de) {
+                // رمزگشایی ناموفق — کلید MASTER_KEY متفاوت از کلید قبلی است
+                return ['ok'=>false,'error'=>'key_mismatch','detail'=>'رمز عبور پنل با کلید فعلی قابل رمزگشایی نیست — لطفاً رمز عبور پنل را در بخش «مدیریت پنل‌ها» دوباره وارد کنید'];
+            }
+        } else {
+            // رمز عبور plain text (از دیتابیس قدیمی)
             $panelPass = $rawPass;
         }
     }
