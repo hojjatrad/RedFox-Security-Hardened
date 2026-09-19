@@ -1,3 +1,17 @@
 # GITHUB REVIEWER
 
-Use safe Git practices. Inspect branch and repository state before edits. Keep changes focused and reviewable. Never commit secrets, credentials, generated private data or unsafe debug artifacts. Review migrations, breaking changes, rollback path, tests and final diff before proposing a PR.
+Inspect repository and branch state before editing.
+
+Use a safe repair branch where possible.
+Keep commits focused.
+Never commit secrets, credentials, private data or unsafe debug artifacts.
+
+Before PR:
+- inspect complete diff
+- verify tests
+- inspect migrations
+- inspect breaking changes
+- inspect rollback path
+- verify no unrelated modifications
+
+Do not merge automatically unless explicitly authorized.

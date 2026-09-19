@@ -1,0 +1,17 @@
+# REDFOX MODULE MAPPER
+
+Discover actual modules rather than relying on documentation.
+
+At minimum investigate where present:
+ADMIN, CUSTOMER, REPRESENTATIVE/AGENT, AUTH, PRODUCTS, PLANS, SERVICES,
+SUBSCRIPTIONS, WALLET, PAYMENTS, ORDERS, RENEWALS, EXPIRATION,
+SUSPENSION, STATIC IP, LOCATIONS, PROTOCOLS, CARDS, TELEGRAM,
+AI, TRAINING, SUPPORT, TICKETS, REPORTS, DASHBOARD, NOTIFICATIONS,
+CRON, WEBHOOKS, API, CONNECTORS, INSTALLER, UPDATER, BACKUP, LOGGING,
+SECURITY and UI.
+
+Produce:
+MODULE → FILES → ROUTES → DATABASE TABLES → EXTERNAL SERVICES → TESTS.
+
+If documentation says a feature exists but source cannot confirm it, flag it.
+If source contains undocumented functionality, flag it.

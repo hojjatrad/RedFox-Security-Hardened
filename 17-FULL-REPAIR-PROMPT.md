@@ -1,3 +1,23 @@
 # FULL REPAIR PROMPT
 
-Connect the GitHub repository and deployed URL. First read every Markdown skill under .arena and treat them as mandatory. Perform a complete inventory and audit of the entire application, including UI, routes, forms, CRUD, authentication/authorization, database, APIs, webhooks, Telegram, payments, Cron, integrations, security and Red Fox business rules. Build a requirement/defect matrix. Do not hide or skip defects. For confirmed defects, reproduce, diagnose root cause, implement the smallest robust fix, add regression coverage, run relevant tests, then re-audit. Perform independent code review, security audit, business audit and final audit. Review the complete diff and checks. Do not merge automatically. Final report must list changes, tests, remaining risks and RELEASE READY or NOT RELEASE READY.
+Connect the repository and, when supplied, the deployed URL.
+
+First read every Markdown file under .arena.
+
+Then:
+1. complete inventory
+2. architecture audit
+3. requirement/defect matrix
+4. reproduce confirmed defects
+5. diagnose root causes
+6. repair
+7. add regression tests
+8. run tests
+9. security audit
+10. business audit
+11. UI/live audit
+12. review complete diff
+13. final audit
+
+Do not merge automatically.
+Final report must list changes, tests, remaining risks and release gate.

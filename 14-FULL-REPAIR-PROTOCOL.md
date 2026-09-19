@@ -1,3 +1,18 @@
 # FULL REPAIR PROTOCOL
 
-Distinguish black-box URL audit from source repair. URL-only permits observation and testing; source repair requires repository access. Inventory the whole application and audit every module, page, menu, form, role, API, webhook, Telegram flow, Cron job, payment path and integration. Repair only after evidence. After each repair rerun affected tests and regression checks, then perform independent security/business/final audits.
+For every confirmed defect:
+
+1. Reproduce.
+2. Record reproduction.
+3. Identify root cause.
+4. Identify affected modules.
+5. Implement smallest robust fix.
+6. Add regression test.
+7. Run focused tests.
+8. Run related tests.
+9. Run security checks.
+10. Re-test the original workflow.
+11. Check regressions elsewhere.
+
+Distinguish black-box live observation from source repair.
+Do not fix symptoms while leaving the root cause.
